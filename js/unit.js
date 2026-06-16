@@ -1,14 +1,23 @@
 import { Entity } from './entities.js';
 import { getFactionPalette, drawSoftShadow, getElevationLift } from './render.js';
+import { UNIT_DEFS } from './tech.js';
 
 export class Unit extends Entity {
   constructor(id, faction, type, x, y, speed, maxHealth, damage = 0, attackRange = 0) {
+    const def = UNIT_DEFS[type];
+    speed = speed ?? def?.speed ?? 100;
+    maxHealth = maxHealth ?? def?.maxHealth ?? 50;
+    damage = damage || def?.damage || 0;
+    attackRange = attackRange || def?.attackRange || 0;
+
     super(id, faction, maxHealth, maxHealth);
-    this.type = type; // 'soldier', 'rocket', 'tank', 'harvester'
+    this.type = type;
     this.x = x; // World X (isometric space)
     this.y = y; // World Y (isometric space)
     this.speed = speed;
-    this.radius = type === 'tank' || type === 'harvester' ? 14 : 7;
+    this.radius = this.getRadiusForType(type);
+    this.isFlying = Boolean(def?.flying);
+    this.projectileType = def?.projectile || null;
     
     this.path = [];
     this.pathIndex = 0;
@@ -17,12 +26,29 @@ export class Unit extends Entity {
     // Combat
     this.damage = damage;
     this.attackRange = attackRange;
-    this.attackCooldown = type === 'tank' ? 1.5 : 0.6;
+    this.attackCooldown = this.getCooldownForType(type);
     this.lastAttackTime = 0;
     this.combatTarget = null;
     
     this.angle = 0;
     this.turretAngle = 0;
+  }
+
+  getRadiusForType(type) {
+    if (type === 'tank' || type === 'harvester') return 14;
+    if (type === 'buggy' || type === 'plane') return 12;
+    if (type === 'nuke_rocket' || type === 'bio_rocket') return 13;
+    if (type === 'motorcycle') return 8;
+    return 7;
+  }
+
+  getCooldownForType(type) {
+    if (type === 'tank') return 1.5;
+    if (type === 'plane') return 0.9;
+    if (type === 'nuke_rocket') return 3.2;
+    if (type === 'bio_rocket') return 2.6;
+    if (type === 'buggy') return 0.75;
+    return 0.6;
   }
 
   update(dt, game) {
@@ -143,13 +169,29 @@ export class Unit extends Entity {
   }
 
   shoot(game) {
+    let projectileType = this.projectileType;
+    if (!projectileType) {
+      if (this.type === 'rocket') projectileType = 'rocket';
+      else if (this.type === 'tank') projectileType = 'shell';
+      else if (this.type === 'plane') projectileType = 'rocket';
+      else projectileType = 'bullet';
+    }
+
+    const projectileSpeed = {
+      bullet: 420,
+      shell: 280,
+      rocket: 210,
+      nuke: 170,
+      bio: 190,
+    }[projectileType] || 360;
+
     game.projectiles.push(new Projectile(
       this.x, 
       this.y, 
       this.combatTarget, 
-      this.type === 'rocket' ? 180 : 400, 
+      projectileSpeed, 
       this.damage,
-      this.type === 'rocket' ? 'rocket' : 'bullet',
+      projectileType,
       this.faction
     ));
   }
@@ -166,8 +208,16 @@ export class Unit extends Entity {
 
     if (this.type === 'soldier' || this.type === 'rocket') {
       this.drawInfantry(ctx, screenX, screenY - bob, palette, this.type === 'rocket', time);
+    } else if (this.type === 'motorcycle') {
+      this.drawMotorcycle(ctx, screenX, screenY - bob, palette, time);
+    } else if (this.type === 'buggy') {
+      this.drawBuggy(ctx, screenX, screenY - bob, palette, time);
     } else if (this.type === 'tank') {
       this.drawTank(ctx, screenX, screenY - bob, palette, time);
+    } else if (this.type === 'plane') {
+      this.drawPlane(ctx, screenX, screenY - 24 - bob, palette, time);
+    } else if (this.type === 'nuke_rocket' || this.type === 'bio_rocket') {
+      this.drawStrategicRocket(ctx, screenX, screenY - bob, palette, time);
     }
 
     this.drawSelectionAndHP(ctx, camera, screenX, screenY, this.radius * 1.8, this.radius * 1.2, game);
@@ -337,6 +387,155 @@ export class Unit extends Entity {
       ctx.arc(sx - Math.cos(this.angle) * 14, sy - Math.sin(this.angle) * 7 - 2, 3, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+
+  drawMotorcycle(ctx, sx, sy, palette, time) {
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.scale(1, 0.55);
+    ctx.rotate(this.angle);
+
+    ctx.strokeStyle = '#101416';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(-8, 0, 4, 0, Math.PI * 2);
+    ctx.arc(8, 0, 4, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = palette.primary;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-8, 0);
+    ctx.lineTo(0, -5);
+    ctx.lineTo(8, 0);
+    ctx.moveTo(0, -5);
+    ctx.lineTo(3, -10);
+    ctx.stroke();
+
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(-2, -11, 7, 5);
+    ctx.fillStyle = '#fff59d';
+    ctx.fillRect(8, -2, 3, 4);
+    ctx.restore();
+
+    if (this.state === 'moving' && Math.sin(time * 24) > 0.5) {
+      ctx.fillStyle = 'rgba(160, 160, 160, 0.25)';
+      ctx.beginPath();
+      ctx.arc(sx - Math.cos(this.angle) * 12, sy - Math.sin(this.angle) * 6, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  drawBuggy(ctx, sx, sy, palette, time) {
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.scale(1, 0.55);
+    ctx.rotate(this.angle);
+
+    ctx.fillStyle = '#111619';
+    for (const x of [-10, 10]) {
+      for (const y of [-7, 7]) {
+        ctx.beginPath();
+        ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    ctx.fillStyle = palette.secondary;
+    ctx.fillRect(-12, -7, 24, 14);
+    ctx.strokeStyle = '#000';
+    ctx.strokeRect(-12, -7, 24, 14);
+
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(-3, -5, 8, 10);
+    ctx.fillStyle = palette.accent;
+    ctx.fillRect(4, -3, 5, 6);
+
+    ctx.strokeStyle = '#90a4ae';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(4, 0);
+    ctx.lineTo(16, 0);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawPlane(ctx, sx, sy, palette, time) {
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.scale(1, 0.65);
+    ctx.rotate(this.angle);
+
+    ctx.fillStyle = palette.secondary;
+    ctx.beginPath();
+    ctx.moveTo(18, 0);
+    ctx.lineTo(-14, -5);
+    ctx.lineTo(-18, 0);
+    ctx.lineTo(-14, 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.stroke();
+
+    ctx.fillStyle = palette.primary;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-8, -18);
+    ctx.lineTo(4, -4);
+    ctx.lineTo(4, 4);
+    ctx.lineTo(-8, 18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(128, 222, 234, 0.75)';
+    ctx.fillRect(6, -3, 7, 6);
+
+    ctx.fillStyle = `rgba(255, 245, 157, ${0.45 + Math.sin(time * 20) * 0.2})`;
+    ctx.beginPath();
+    ctx.arc(-19, 0, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawStrategicRocket(ctx, sx, sy, palette, time) {
+    const isBio = this.type === 'bio_rocket';
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.scale(1, 0.55);
+    ctx.rotate(this.angle);
+
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(-16, -9, 28, 18);
+    ctx.strokeStyle = '#000';
+    ctx.strokeRect(-16, -9, 28, 18);
+
+    ctx.fillStyle = palette.secondary;
+    ctx.fillRect(-13, -6, 12, 12);
+    ctx.fillStyle = isBio ? '#66bb6a' : '#ff7043';
+    ctx.fillRect(-2, -3, 18, 6);
+    ctx.beginPath();
+    ctx.moveTo(16, 0);
+    ctx.lineTo(22, -5);
+    ctx.lineTo(22, 5);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#111619';
+    for (let i = -10; i <= 8; i += 6) {
+      ctx.beginPath();
+      ctx.arc(i, -10, 2.5, 0, Math.PI * 2);
+      ctx.arc(i, 10, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+
+    const glow = isBio ? 'rgba(102, 187, 106, 0.25)' : 'rgba(255, 112, 67, 0.25)';
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(sx + Math.sin(time * 4) * 2, sy - 10, 6, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
@@ -687,13 +886,45 @@ export class Projectile {
 
     const step = this.speed * dt;
     if (dist <= step) {
-      this.target.takeDamage(this.damage);
+      if (['explosive', 'nuke', 'bio'].includes(this.type)) {
+        this.applySplashDamage(game);
+      } else {
+        this.target.takeDamage(this.damage);
+      }
       this.isDead = true;
-      game.particles.push(new ExplosionParticle(this.target.x, this.target.y, this.type === 'rocket' ? 12 : 5));
+      const radius = {
+        bullet: 5,
+        shell: 10,
+        rocket: 12,
+        laser: 8,
+        explosive: 18,
+        nuke: 34,
+        bio: 26,
+      }[this.type] || 8;
+      game.particles.push(new ExplosionParticle(this.target.x, this.target.y, radius, this.type));
     } else {
       this.x += (dx / dist) * step;
       this.y += (dy / dist) * step;
     }
+  }
+
+  applySplashDamage(game) {
+    const radius = {
+      explosive: 95,
+      nuke: 170,
+      bio: 135,
+    }[this.type] || 60;
+    const entities = this.faction === 'player' ? game.enemyEntities : game.playerEntities;
+
+    entities.forEach(ent => {
+      if (ent.isDead) return;
+      const dist = Math.hypot(ent.x - this.target.x, ent.y - this.target.y);
+      if (dist > radius) return;
+
+      const falloff = 1 - dist / radius;
+      const minimumRatio = this.type === 'bio' ? 0.35 : 0.25;
+      ent.takeDamage(this.damage * Math.max(minimumRatio, falloff));
+    });
   }
 
   draw(ctx, camera, game = null) {
@@ -716,25 +947,45 @@ export class Projectile {
       ctx.lineTo(screenX, screenY);
       ctx.stroke();
       ctx.shadowBlur = 0;
-    } else if (this.type === 'rocket') {
+    } else if (this.type === 'laser') {
+      const angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+      ctx.save();
+      ctx.translate(screenX, screenY);
+      ctx.rotate(angle);
+      ctx.shadowColor = '#00e5ff';
+      ctx.shadowBlur = 10;
+      ctx.strokeStyle = '#80deea';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-8, 0);
+      ctx.lineTo(12, 0);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    } else if (this.type === 'shell' || this.type === 'explosive' || this.type === 'rocket' || this.type === 'nuke' || this.type === 'bio') {
       const angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
       ctx.save();
       ctx.translate(screenX, screenY);
       ctx.rotate(angle);
 
-      ctx.shadowColor = '#ff6f00';
-      ctx.shadowBlur = 8;
-      ctx.fillStyle = '#ff8f00';
-      ctx.fillRect(-6, -2, 10, 4);
-      ctx.fillStyle = '#ff3d00';
+      const isBio = this.type === 'bio';
+      const isNuke = this.type === 'nuke';
+      const isExplosive = this.type === 'explosive';
+      ctx.shadowColor = isBio ? '#69f0ae' : isNuke ? '#ff7043' : '#ff6f00';
+      ctx.shadowBlur = isNuke || isBio ? 14 : 8;
+      ctx.fillStyle = isBio ? '#66bb6a' : isNuke ? '#ff7043' : isExplosive ? '#ffab00' : '#ff8f00';
+      ctx.fillRect(-6, -2.5, isNuke || isBio ? 16 : 10, 5);
+      ctx.fillStyle = isBio ? '#1b5e20' : '#ff3d00';
       ctx.beginPath();
-      ctx.moveTo(4, 0);
-      ctx.lineTo(10, -3);
-      ctx.lineTo(10, 3);
+      ctx.moveTo(isNuke || isBio ? 10 : 4, 0);
+      ctx.lineTo(isNuke || isBio ? 17 : 10, -3);
+      ctx.lineTo(isNuke || isBio ? 17 : 10, 3);
       ctx.closePath();
       ctx.fill();
 
-      ctx.fillStyle = `rgba(255, 200, 50, ${0.45 + Math.sin(time * 30) * 0.2})`;
+      ctx.fillStyle = isBio
+        ? `rgba(105, 240, 174, ${0.45 + Math.sin(time * 30) * 0.2})`
+        : `rgba(255, 200, 50, ${0.45 + Math.sin(time * 30) * 0.2})`;
       ctx.beginPath();
       ctx.arc(-8, 0, 3 + Math.sin(time * 30) * 1, 0, Math.PI * 2);
       ctx.fill();
@@ -745,12 +996,14 @@ export class Projectile {
 }
 
 class ExplosionParticle {
-  constructor(x, y, radius) {
+  constructor(x, y, radius, type = 'default') {
     this.x = x;
     this.y = y;
     this.radius = radius;
+    this.type = type;
     this.maxLife = 0.25;
-    this.life = 0.25;
+    this.life = type === 'nuke' || type === 'bio' ? 0.55 : 0.25;
+    this.maxLife = this.life;
     this.isDead = false;
   }
 
@@ -767,10 +1020,24 @@ class ExplosionParticle {
     const ratio = this.life / this.maxLife;
 
     ctx.save();
+    const isBio = this.type === 'bio';
+    const isNuke = this.type === 'nuke';
+    ctx.shadowColor = isBio ? '#69f0ae' : isNuke ? '#ff3300' : '#ff6f00';
+    ctx.shadowBlur = (isBio || isNuke) ? 18 * ratio : 0;
     ctx.beginPath();
     ctx.ellipse(screenX, screenY, this.radius * (1.5 - ratio), this.radius * 0.75 * (1.5 - ratio), 0, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(255, ${Math.floor(100 + 155 * ratio)}, 0, ${ratio})`;
+    ctx.fillStyle = isBio
+      ? `rgba(80, ${Math.floor(180 + 60 * ratio)}, 120, ${ratio * 0.85})`
+      : `rgba(255, ${Math.floor(100 + 155 * ratio)}, 0, ${ratio})`;
     ctx.fill();
+
+    if (isNuke || isBio) {
+      ctx.strokeStyle = isBio ? `rgba(105, 240, 174, ${ratio})` : `rgba(255, 245, 157, ${ratio})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, this.radius * (2.0 - ratio), 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 }

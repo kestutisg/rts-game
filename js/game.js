@@ -6,6 +6,7 @@ import { Unit, Harvester } from './unit.js';
 import { EnemyAI } from './ai.js';
 import { AudioSynthesizer } from './audio.js';
 import { DayCycle } from './daycycle.js';
+import { BUILDING_DEFS, LEVELS, UNIT_DEFS, isUnlockedAt } from './tech.js';
 
 class Game {
   constructor() {
@@ -31,6 +32,8 @@ class Game {
     // Economy
     this.playerCredits = 5000;
     this.enemyCredits = 5000;
+    this.playerLevelIndex = 0;
+    this.enemyLevelIndex = 0;
 
     // Faction Entity Lists
     this.playerEntities = [];
@@ -121,8 +124,8 @@ class Game {
     const c1 = this.grid.getTileCoords(12, 10);
     const c2 = this.grid.getTileCoords(13, 11);
 
-    const u1 = new Unit(this.generateEntityId(), 'player', 'soldier', c1.x, c1.y, 100, 50, 8, 120);
-    const u2 = new Unit(this.generateEntityId(), 'player', 'soldier', c2.x, c2.y, 100, 50, 8, 120);
+    const u1 = new Unit(this.generateEntityId(), 'player', 'motorcycle', c1.x, c1.y);
+    const u2 = new Unit(this.generateEntityId(), 'player', 'buggy', c2.x, c2.y);
     this.addUnit(u1);
     this.addUnit(u2);
 
@@ -140,8 +143,8 @@ class Game {
     const ec1 = this.grid.getTileCoords(enemyCyardX - 2, enemyCyardY + 1);
     const ec2 = this.grid.getTileCoords(enemyCyardX - 2, enemyCyardY + 2);
 
-    const eu1 = new Unit(this.generateEntityId(), 'enemy', 'soldier', ec1.x, ec1.y, 100, 50, 8, 120);
-    const eu2 = new Unit(this.generateEntityId(), 'enemy', 'soldier', ec2.x, ec2.y, 100, 50, 8, 120);
+    const eu1 = new Unit(this.generateEntityId(), 'enemy', 'motorcycle', ec1.x, ec1.y);
+    const eu2 = new Unit(this.generateEntityId(), 'enemy', 'buggy', ec2.x, ec2.y);
     this.addUnit(eu1);
     this.addUnit(eu2);
   }
@@ -149,6 +152,8 @@ class Game {
   restart() {
     this.playerCredits = 5000;
     this.enemyCredits = 5000;
+    this.playerLevelIndex = 0;
+    this.enemyLevelIndex = 0;
 
     this.playerEntities = [];
     this.enemyEntities = [];
@@ -170,6 +175,47 @@ class Game {
     this.ui.setStatusText("SYSTEM REBOOTED. CONSTRUCT STRUCTURES TO EXPAND BASE.");
   }
 
+  getLevelIndexForFaction(faction) {
+    return faction === 'player' ? this.playerLevelIndex : this.enemyLevelIndex;
+  }
+
+  getCurrentLevel(faction = 'player') {
+    return LEVELS[this.getLevelIndexForFaction(faction)];
+  }
+
+  canUseBuilding(faction, type) {
+    const def = BUILDING_DEFS[type];
+    return Boolean(def) && isUnlockedAt(this.getLevelIndexForFaction(faction), def);
+  }
+
+  canUseUnit(faction, type) {
+    const def = UNIT_DEFS[type];
+    return Boolean(def) && isUnlockedAt(this.getLevelIndexForFaction(faction), def);
+  }
+
+  upgradePlayerLevel() {
+    const nextLevel = LEVELS[this.playerLevelIndex + 1];
+    if (!nextLevel || this.state !== 'playing') return;
+
+    if (this.playerCredits < nextLevel.upgradeCost) {
+      this.ui.setStatusText(`INSUFFICIENT CREDITS. ${nextLevel.name.toUpperCase()} LEVEL REQUIRES $${nextLevel.upgradeCost}.`);
+      return;
+    }
+
+    this.playerCredits -= nextLevel.upgradeCost;
+    this.playerLevelIndex++;
+    this.ui.setStatusText(`${nextLevel.name.toUpperCase()} LEVEL UNLOCKED: ${nextLevel.description}.`);
+  }
+
+  upgradeEnemyLevel() {
+    const nextLevel = LEVELS[this.enemyLevelIndex + 1];
+    if (!nextLevel || this.enemyCredits < nextLevel.upgradeCost) return false;
+
+    this.enemyCredits -= nextLevel.upgradeCost;
+    this.enemyLevelIndex++;
+    return true;
+  }
+
   generateEntityId() {
     return this.nextEntityId++;
   }
@@ -188,6 +234,8 @@ class Game {
   }
 
   spawnBuilding(faction, type, gridX, gridY) {
+    if (!this.canUseBuilding(faction, type)) return null;
+
     const b = new Building(this.generateEntityId(), faction, type, gridX, gridY, this.grid.tileSize);
     
     const isStartingBuilding = (gridX === 8 && gridY === 8) || (gridX === 8 && gridY === 12) || 
@@ -210,7 +258,7 @@ class Game {
       for (let y = gridY; y < gridY + b.gridHeight; y++) {
         const tile = this.grid.getTile(x, y);
         if (tile) {
-          tile.walkable = false;
+          tile.walkable = Boolean(BUILDING_DEFS[type]?.isGate);
           tile.occupiedBy = b;
         }
       }
@@ -224,6 +272,10 @@ class Game {
   }
 
   validateBuildingPlacement(faction, gridX, gridY, width, height) {
+    if (this.placementType && !this.canUseBuilding(faction, this.placementType)) {
+      return false;
+    }
+
     if (gridX < 0 || gridX + width > this.grid.width || gridY < 0 || gridY + height > this.grid.height) {
       return false;
     }

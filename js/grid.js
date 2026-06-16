@@ -377,7 +377,9 @@ export class Grid {
       }
 
       for (const neighbor of this.getNeighbors(current)) {
-        const isOccupied = neighbor.occupiedBy && neighbor.occupiedBy !== unit && neighbor !== endTile;
+        const occupant = neighbor.occupiedBy;
+        const isFriendlyGate = occupant?.isBuilding && occupant.def?.isGate && (!unit || occupant.faction === unit.faction);
+        const isOccupied = occupant && occupant !== unit && neighbor !== endTile && !isFriendlyGate;
         if (!neighbor.walkable || isOccupied) continue;
 
         const isDiagonal = neighbor.x !== current.x && neighbor.y !== current.y;

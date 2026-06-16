@@ -35,6 +35,10 @@
         <span class="hud-label">TIME</span>
         <span class="hud-value" id="time-phase">DAY</span>
       </div>
+      <div class="hud-item" id="level-display">
+        <span class="hud-label">LEVEL</span>
+        <span class="hud-value" id="tech-level">BASIC</span>
+      </div>
       <div class="hud-item" id="fps-display">
         <span class="hud-label">FPS</span>
         <span class="hud-value" id="fps-counter">60</span>
@@ -53,6 +57,15 @@
         <div class="minimap-container">
           <canvas id="minimap-canvas" width="160" height="160"></canvas>
         </div>
+      </div>
+
+      <div class="panel-section" id="level-panel">
+        <div class="panel-title">COMMAND LEVEL</div>
+        <div class="level-readout">
+          <span id="level-name">BASIC</span>
+          <span id="level-description">LIGHT MOTOR POOL</span>
+        </div>
+        <button class="upgrade-btn" id="upgrade-level">UPGRADE LEVEL</button>
       </div>
 
       <!-- Construction/Training Sidebar Panels -->
@@ -83,10 +96,40 @@
             <div class="build-progress" id="progress-refinery"></div>
           </button>
           <button class="build-card" id="build-barracks" title="Barracks: Trains infantry units">
-            <span class="card-name">Barracks</span>
+            <span class="card-name">Motor Pool</span>
             <span class="card-cost">$500</span>
             <span class="card-power">-20 MW</span>
             <div class="build-progress" id="progress-barracks"></div>
+          </button>
+          <button class="build-card" id="build-fence" title="Fence: Improved-level passive defense">
+            <span class="card-name">Fence</span>
+            <span class="card-cost">$120</span>
+            <span class="card-power">+0 MW</span>
+            <div class="build-progress" id="progress-fence"></div>
+          </button>
+          <button class="build-card" id="build-gate" title="Gate: Improved-level passive defense that friendly units can pass">
+            <span class="card-name">Gate</span>
+            <span class="card-cost">$180</span>
+            <span class="card-power">+0 MW</span>
+            <div class="build-progress" id="progress-gate"></div>
+          </button>
+          <button class="build-card" id="build-turret" title="Cannon Turret: Advanced-level active defense">
+            <span class="card-name">Cannon Turret</span>
+            <span class="card-cost">$900</span>
+            <span class="card-power">-35 MW</span>
+            <div class="build-progress" id="progress-turret"></div>
+          </button>
+          <button class="build-card" id="build-laser" title="Laser Tower: High-level active defense">
+            <span class="card-name">Laser Tower</span>
+            <span class="card-cost">$1600</span>
+            <span class="card-power">-70 MW</span>
+            <div class="build-progress" id="progress-laser"></div>
+          </button>
+          <button class="build-card" id="build-explosive_tower" title="Explosive Tower: High-level heavy active defense">
+            <span class="card-name">Explosive Tower</span>
+            <span class="card-cost">$2100</span>
+            <span class="card-power">-85 MW</span>
+            <div class="build-progress" id="progress-explosive_tower"></div>
           </button>
         </div>
 
@@ -97,20 +140,35 @@
             <span class="card-cost">$1000</span>
             <div class="build-progress" id="progress-harvester"></div>
           </button>
-          <button class="build-card" id="train-soldier" title="Rifleman: Basic anti-infantry combat unit">
-            <span class="card-name">Rifleman</span>
-            <span class="card-cost">$100</span>
-            <div class="build-progress" id="progress-soldier"></div>
+          <button class="build-card" id="train-motorcycle" title="Motorcycle: Basic light motor vehicle">
+            <span class="card-name">Motorcycle</span>
+            <span class="card-cost">$160</span>
+            <div class="build-progress" id="progress-motorcycle"></div>
           </button>
-          <button class="build-card" id="train-rocket" title="Rocket Soldier: Anti-armor unit">
-            <span class="card-name">Rocket Soldier</span>
-            <span class="card-cost">$300</span>
-            <div class="build-progress" id="progress-rocket"></div>
+          <button class="build-card" id="train-buggy" title="Buggy: Basic light motor vehicle">
+            <span class="card-name">Buggy</span>
+            <span class="card-cost">$260</span>
+            <div class="build-progress" id="progress-buggy"></div>
           </button>
-          <button class="build-card" id="train-tank" title="Medium Tank: Direct assault armored vehicle">
-            <span class="card-name">Medium Tank</span>
+          <button class="build-card" id="train-tank" title="Tank: Improved-level heavy unit">
+            <span class="card-name">Tank</span>
             <span class="card-cost">$800</span>
             <div class="build-progress" id="progress-tank"></div>
+          </button>
+          <button class="build-card" id="train-plane" title="Plane: Advanced-level flying unit">
+            <span class="card-name">Plane</span>
+            <span class="card-cost">$1200</span>
+            <div class="build-progress" id="progress-plane"></div>
+          </button>
+          <button class="build-card" id="train-nuke_rocket" title="Nuclear Rocket: High-level strategic explosive weapon">
+            <span class="card-name">Nuclear Rocket</span>
+            <span class="card-cost">$2400</span>
+            <div class="build-progress" id="progress-nuke_rocket"></div>
+          </button>
+          <button class="build-card" id="train-bio_rocket" title="Bio Rocket: High-level biological weapon">
+            <span class="card-name">Bio Rocket</span>
+            <span class="card-cost">$1900</span>
+            <div class="build-progress" id="progress-bio_rocket"></div>
           </button>
         </div>
       </div>

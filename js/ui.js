@@ -4,6 +4,8 @@
  * radar network projection, and dynamic hovering tooltips.
  */
 
+import { BUILDING_DEFS, LEVELS, UNIT_DEFS } from './tech.js';
+
 export class UIManager {
   constructor(game) {
     this.game = game;
@@ -14,6 +16,10 @@ export class UIManager {
     this.powerBarFill = document.getElementById('power-bar-fill');
     this.fpsCounter = document.getElementById('fps-counter');
     this.timePhase = document.getElementById('time-phase');
+    this.techLevel = document.getElementById('tech-level');
+    this.levelName = document.getElementById('level-name');
+    this.levelDescription = document.getElementById('level-description');
+    this.upgradeLevelBtn = document.getElementById('upgrade-level');
     this.statusText = document.getElementById('status-text');
     this.minimapCanvas = document.getElementById('minimap-canvas');
 
@@ -55,15 +61,23 @@ export class UIManager {
       this.buildingsGrid.classList.add('hidden');
     });
 
-    document.getElementById('build-cyard').addEventListener('click', () => this.startSidebarBuild('cyard', 1000, 8.0));
-    document.getElementById('build-power').addEventListener('click', () => this.startSidebarBuild('power', 300, 4.0));
-    document.getElementById('build-refinery').addEventListener('click', () => this.startSidebarBuild('refinery', 2000, 10.0));
-    document.getElementById('build-barracks').addEventListener('click', () => this.startSidebarBuild('barracks', 500, 6.0));
+    Object.entries(BUILDING_DEFS).forEach(([type, def]) => {
+      const btn = document.getElementById(`build-${type}`);
+      if (btn) {
+        btn.addEventListener('click', () => this.startSidebarBuild(type, def.cost, def.duration));
+      }
+    });
 
-    document.getElementById('train-harvester').addEventListener('click', () => this.queueUnitTraining('harvester'));
-    document.getElementById('train-soldier').addEventListener('click', () => this.queueUnitTraining('soldier'));
-    document.getElementById('train-rocket').addEventListener('click', () => this.queueUnitTraining('rocket'));
-    document.getElementById('train-tank').addEventListener('click', () => this.queueUnitTraining('tank'));
+    Object.keys(UNIT_DEFS).forEach(type => {
+      const btn = document.getElementById(`train-${type}`);
+      if (btn) {
+        btn.addEventListener('click', () => this.queueUnitTraining(type));
+      }
+    });
+
+    if (this.upgradeLevelBtn) {
+      this.upgradeLevelBtn.addEventListener('click', () => this.game.upgradePlayerLevel());
+    }
   }
 
   setStatusText(msg) {
@@ -81,6 +95,11 @@ export class UIManager {
 
   startSidebarBuild(type, cost, duration) {
     if (this.game.state !== 'playing') return;
+
+    if (!this.game.canUseBuilding('player', type)) {
+      this.setStatusText(`${this.getBuildingName(type)} REQUIRES ${BUILDING_DEFS[type].level.toUpperCase()} LEVEL.`);
+      return;
+    }
 
     if (this.sidebarState === 'ready' && this.sidebarBuilding === type) {
       this.enterPlacementMode(type, cost);
@@ -111,8 +130,11 @@ export class UIManager {
 
     let tilesW = 2;
     let tilesH = 2;
-    if (type === 'cyard') { tilesW = 3; tilesH = 3; }
-    else if (type === 'refinery') { tilesW = 3; tilesH = 2; }
+    const def = BUILDING_DEFS[type];
+    if (def) {
+      tilesW = def.gridWidth;
+      tilesH = def.gridHeight;
+    }
 
     this.game.ghostWTiles = tilesW;
     this.game.ghostHTiles = tilesH;
@@ -130,11 +152,15 @@ export class UIManager {
   queueUnitTraining(type) {
     if (this.game.state !== 'playing') return;
 
-    let parentBuildingType = 'barracks';
-    if (type === 'harvester') {
-      parentBuildingType = 'refinery';
+    const def = UNIT_DEFS[type];
+    if (!def) return;
+
+    if (!this.game.canUseUnit('player', type)) {
+      this.setStatusText(`${def.name.toUpperCase()} REQUIRES ${def.level.toUpperCase()} LEVEL.`);
+      return;
     }
 
+    const parentBuildingType = def.producer;
     const friendlyBuildings = this.game.playerEntities.filter(b => b.isBuilding && !b.isDead);
     const parentBuilding = friendlyBuildings.find(b => b.type === parentBuildingType && !b.isUnderConstruction);
 
@@ -143,10 +169,7 @@ export class UIManager {
       return;
     }
 
-    let cost = 100;
-    if (type === 'rocket') cost = 300;
-    if (type === 'tank') cost = 800;
-    if (type === 'harvester') cost = 1000;
+    const cost = def.cost;
 
     if (this.game.playerCredits < cost) {
       this.setStatusText("INSUFFICIENT CREDITS.");
@@ -204,6 +227,21 @@ export class UIManager {
       this.timePhase.innerText = this.game.dayCycle.getPhaseName();
     }
 
+    const level = this.game.getCurrentLevel('player');
+    if (this.techLevel) this.techLevel.innerText = level.name.toUpperCase();
+    if (this.levelName) this.levelName.innerText = level.name.toUpperCase();
+    if (this.levelDescription) this.levelDescription.innerText = level.description.toUpperCase();
+    if (this.upgradeLevelBtn) {
+      const nextLevel = LEVELS[this.game.playerLevelIndex + 1];
+      if (nextLevel) {
+        this.upgradeLevelBtn.innerText = `UPGRADE: ${nextLevel.name.toUpperCase()} $${nextLevel.upgradeCost}`;
+        this.upgradeLevelBtn.disabled = this.game.playerCredits < nextLevel.upgradeCost || this.game.state !== 'playing';
+      } else {
+        this.upgradeLevelBtn.innerText = 'MAX LEVEL';
+        this.upgradeLevelBtn.disabled = true;
+      }
+    }
+
     // Power Calculation
     let powerGen = 0;
     let powerDraw = 0;
@@ -246,15 +284,26 @@ export class UIManager {
     const hasRefinery = friendlyBuildings.some(b => b.type === 'refinery');
     const hasBarracks = friendlyBuildings.some(b => b.type === 'barracks');
 
-    document.getElementById('build-cyard').disabled = this.sidebarState !== 'idle' && this.sidebarBuilding !== 'cyard';
-    document.getElementById('build-power').disabled = !hasCyard || (this.sidebarState !== 'idle' && this.sidebarBuilding !== 'power');
-    document.getElementById('build-refinery').disabled = !hasPower || (this.sidebarState !== 'idle' && this.sidebarBuilding !== 'refinery');
-    document.getElementById('build-barracks').disabled = !hasRefinery || (this.sidebarState !== 'idle' && this.sidebarBuilding !== 'barracks');
+    Object.keys(BUILDING_DEFS).forEach(type => {
+      const btn = document.getElementById(`build-${type}`);
+      if (!btn) return;
 
-    document.getElementById('train-harvester').disabled = !hasRefinery;
-    document.getElementById('train-soldier').disabled = !hasBarracks;
-    document.getElementById('train-rocket').disabled = !hasBarracks;
-    document.getElementById('train-tank').disabled = !hasBarracks;
+      let blockedByPrereq = false;
+      if (type === 'power') blockedByPrereq = !hasCyard;
+      else if (type === 'refinery') blockedByPrereq = !hasPower;
+      else if (type === 'barracks') blockedByPrereq = !hasRefinery;
+      else if (!['cyard', 'power', 'refinery', 'barracks'].includes(type)) blockedByPrereq = !hasCyard;
+
+      const sidebarBusy = this.sidebarState !== 'idle' && this.sidebarBuilding !== type;
+      btn.disabled = blockedByPrereq || sidebarBusy || !this.game.canUseBuilding('player', type);
+    });
+
+    Object.entries(UNIT_DEFS).forEach(([type, def]) => {
+      const btn = document.getElementById(`train-${type}`);
+      if (!btn) return;
+      const hasProducer = def.producer === 'refinery' ? hasRefinery : hasBarracks;
+      btn.disabled = !hasProducer || !this.game.canUseUnit('player', type);
+    });
   }
 
   updateHoverLabels() {
@@ -292,13 +341,7 @@ export class UIManager {
   }
 
   getBuildingName(type) {
-    switch(type) {
-      case 'cyard': return 'CONSTRUCTION YARD';
-      case 'power': return 'POWER PLANT';
-      case 'refinery': return 'ORE REFINERY';
-      case 'barracks': return 'BARRACKS';
-      default: return 'STRUCTURE';
-    }
+    return (BUILDING_DEFS[type]?.name || 'Structure').toUpperCase();
   }
 
   drawMinimap() {

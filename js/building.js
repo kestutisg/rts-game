@@ -1,5 +1,5 @@
 import { Entity } from './entities.js';
-import { Unit, Harvester } from './unit.js';
+import { Unit, Harvester, Projectile } from './unit.js';
 import {
   getFactionPalette,
   drawIsoFootprint,
@@ -7,54 +7,22 @@ import {
   drawCylinder,
   drawSmokePuff,
 } from './render.js';
+import { BUILDING_DEFS, UNIT_DEFS } from './tech.js';
 
 export class Building extends Entity {
   constructor(id, faction, type, gridX, gridY, tileSize) {
-    let maxHealth = 500;
-    let gridWidth = 2;
-    let gridHeight = 2;
-    let powerProd = 0;
-    let powerUse = 0;
-    let buildingHeight = 20; // 3D height extrusion
-
-    switch (type) {
-      case 'cyard':
-        maxHealth = 1500;
-        gridWidth = 3;
-        gridHeight = 3;
-        powerProd = 0;
-        powerUse = 0;
-        buildingHeight = 35;
-        break;
-      case 'power':
-        maxHealth = 600;
-        gridWidth = 2;
-        gridHeight = 2;
-        powerProd = 100;
-        powerUse = 0;
-        buildingHeight = 25;
-        break;
-      case 'refinery':
-        maxHealth = 1000;
-        gridWidth = 3;
-        gridHeight = 2;
-        powerProd = 0;
-        powerUse = 40;
-        buildingHeight = 28;
-        break;
-      case 'barracks':
-        maxHealth = 800;
-        gridWidth = 2;
-        gridHeight = 2;
-        powerProd = 0;
-        powerUse = 20;
-        buildingHeight = 24;
-        break;
-    }
+    const def = BUILDING_DEFS[type] || BUILDING_DEFS.barracks;
+    const maxHealth = def.maxHealth;
+    const gridWidth = def.gridWidth;
+    const gridHeight = def.gridHeight;
+    const powerProd = def.powerProduction;
+    const powerUse = def.powerUsage;
+    const buildingHeight = def.height3D;
 
     super(id, faction, maxHealth, maxHealth);
     
     this.type = type;
+    this.def = def;
     this.gridX = gridX;
     this.gridY = gridY;
     this.gridWidth = gridWidth;
@@ -83,6 +51,9 @@ export class Building extends Entity {
     
     this.buildQueue = [];
     this.trainingProgress = 0;
+    this.weapon = def.weapon || null;
+    this.lastAttackTime = 0;
+    this.turretAngle = 0;
     
     // Rally point in world space
     this.rallyPoint = {
@@ -117,6 +88,43 @@ export class Building extends Entity {
         this.trainingProgress = 0;
       }
     }
+
+    if (this.weapon) {
+      this.updateDefenseWeapon(game);
+    }
+  }
+
+  updateDefenseWeapon(game) {
+    if (game.isLowPower(this.faction)) return;
+
+    const enemies = this.faction === 'player' ? game.enemyEntities : game.playerEntities;
+    let closestEnemy = null;
+    let minDist = this.weapon.range;
+
+    for (const enemy of enemies) {
+      if (enemy.isDead) continue;
+      const dist = Math.hypot(enemy.x - this.x, enemy.y - this.y);
+      if (dist < minDist) {
+        minDist = dist;
+        closestEnemy = enemy;
+      }
+    }
+
+    if (!closestEnemy) return;
+
+    this.turretAngle = Math.atan2(closestEnemy.y - this.y, closestEnemy.x - this.x);
+    if (game.currentTime - this.lastAttackTime < this.weapon.cooldown) return;
+
+    game.projectiles.push(new Projectile(
+      this.x,
+      this.y - this.height3D * 0.7,
+      closestEnemy,
+      this.weapon.speed,
+      this.weapon.damage,
+      this.weapon.projectile,
+      this.faction
+    ));
+    this.lastAttackTime = game.currentTime;
   }
 
   onBuildComplete(game) {
@@ -137,27 +145,9 @@ export class Building extends Entity {
   }
 
   queueUnit(unitType) {
-    let cost = 100;
-    let duration = 3.0;
-
-    switch (unitType) {
-      case 'soldier':
-        cost = 100;
-        duration = 3.0;
-        break;
-      case 'rocket':
-        cost = 300;
-        duration = 5.0;
-        break;
-      case 'tank':
-        cost = 800;
-        duration = 10.0;
-        break;
-      case 'harvester':
-        cost = 1000;
-        duration = 12.0;
-        break;
-    }
+    const def = UNIT_DEFS[unitType] || UNIT_DEFS.motorcycle;
+    const cost = def.cost;
+    const duration = def.duration;
 
     this.buildQueue.push({ type: unitType, cost, duration });
   }
@@ -192,12 +182,19 @@ export class Building extends Entity {
       let unit;
       if (unitType === 'harvester') {
         unit = new Harvester(unitId, this.faction, coords.x, coords.y);
-      } else if (unitType === 'soldier') {
-        unit = new Unit(unitId, this.faction, 'soldier', coords.x, coords.y, 100, 50, 8, 120);
-      } else if (unitType === 'rocket') {
-        unit = new Unit(unitId, this.faction, 'rocket', coords.x, coords.y, 85, 45, 22, 180);
-      } else if (unitType === 'tank') {
-        unit = new Unit(unitId, this.faction, 'tank', coords.x, coords.y, 110, 250, 45, 200);
+      } else {
+        const def = UNIT_DEFS[unitType];
+        unit = new Unit(
+          unitId,
+          this.faction,
+          unitType,
+          coords.x,
+          coords.y,
+          def?.speed,
+          def?.maxHealth,
+          def?.damage,
+          def?.attackRange
+        );
       }
 
       game.addUnit(unit);
@@ -315,6 +312,21 @@ export class Building extends Entity {
         break;
       case 'barracks':
         this.drawBarracksDetails(ctx, rx, ry, roofW, roofH, palette, time);
+        break;
+      case 'fence':
+        this.drawFenceDetails(ctx, rx, ry, roofW, roofH, palette);
+        break;
+      case 'gate':
+        this.drawGateDetails(ctx, rx, ry, roofW, roofH, palette, time);
+        break;
+      case 'turret':
+        this.drawTurretDetails(ctx, rx, ry, roofW, roofH, palette);
+        break;
+      case 'laser':
+        this.drawLaserDetails(ctx, rx, ry, roofW, roofH, palette, time);
+        break;
+      case 'explosive_tower':
+        this.drawExplosiveTowerDetails(ctx, rx, ry, roofW, roofH, palette, time);
         break;
     }
   }
@@ -495,6 +507,96 @@ export class Building extends Entity {
     ctx.fill();
     ctx.strokeStyle = palette.dark;
     ctx.stroke();
+  }
+
+  drawFenceDetails(ctx, rx, ry, roofW, roofH, palette) {
+    ctx.strokeStyle = '#90a4ae';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(rx - roofW * 0.3, ry);
+    ctx.lineTo(rx + roofW * 0.3, ry);
+    ctx.stroke();
+
+    ctx.fillStyle = palette.primary;
+    for (const ox of [-roofW * 0.25, 0, roofW * 0.25]) {
+      ctx.fillRect(rx + ox - 2, ry - 18, 4, 22);
+      ctx.strokeStyle = '#000';
+      ctx.strokeRect(rx + ox - 2, ry - 18, 4, 22);
+    }
+  }
+
+  drawGateDetails(ctx, rx, ry, roofW, roofH, palette, time) {
+    ctx.strokeStyle = '#78909c';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(rx - roofW * 0.32, ry + 2);
+    ctx.lineTo(rx - 4, ry - 5 + Math.sin(time * 2) * 2);
+    ctx.moveTo(rx + roofW * 0.32, ry + 2);
+    ctx.lineTo(rx + 4, ry - 5 - Math.sin(time * 2) * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = palette.primary;
+    ctx.fillRect(rx - roofW * 0.36, ry - 20, 5, 24);
+    ctx.fillRect(rx + roofW * 0.36 - 5, ry - 20, 5, 24);
+  }
+
+  drawTurretDetails(ctx, rx, ry, roofW, roofH, palette) {
+    drawCylinder(ctx, rx, ry, 15, 9, 14, { side: '#37474f', top: palette.secondary, edge: '#111' });
+    ctx.save();
+    ctx.translate(rx, ry - 18);
+    ctx.scale(1, 0.55);
+    ctx.rotate(this.turretAngle);
+    ctx.fillStyle = '#90a4ae';
+    ctx.fillRect(0, -3, 26, 6);
+    ctx.strokeStyle = '#000';
+    ctx.strokeRect(0, -3, 26, 6);
+    ctx.fillStyle = palette.primary;
+    ctx.beginPath();
+    ctx.arc(0, 0, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawLaserDetails(ctx, rx, ry, roofW, roofH, palette, time) {
+    drawCylinder(ctx, rx, ry + 5, 13, 8, 28, { side: '#263238', top: '#455a64', edge: '#111' });
+    const pulse = 0.5 + Math.sin(time * 7) * 0.25;
+    ctx.save();
+    ctx.translate(rx, ry - 28);
+    ctx.scale(1, 0.55);
+    ctx.rotate(this.turretAngle);
+    ctx.strokeStyle = palette.accent;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(22, 0);
+    ctx.stroke();
+    ctx.restore();
+    ctx.shadowColor = palette.accent;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = `rgba(128, 222, 234, ${pulse})`;
+    ctx.beginPath();
+    ctx.arc(rx, ry - 32, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  drawExplosiveTowerDetails(ctx, rx, ry, roofW, roofH, palette, time) {
+    drawCylinder(ctx, rx, ry + 3, 14, 8, 24, { side: '#4e342e', top: '#6d4c41', edge: '#111' });
+    ctx.fillStyle = '#ff7043';
+    ctx.beginPath();
+    ctx.moveTo(rx, ry - 40);
+    ctx.lineTo(rx + 13, ry - 20);
+    ctx.lineTo(rx - 13, ry - 20);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.stroke();
+
+    ctx.fillStyle = `rgba(255, 171, 0, ${0.35 + Math.sin(time * 5) * 0.2})`;
+    ctx.beginPath();
+    ctx.arc(rx, ry - 24, 6, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   drawConstructionOverlay(ctx, ptTop, ptRight, ptBottom, ptLeft, h) {

@@ -4,6 +4,8 @@
  * and periodic group attacks against the player.
  */
 
+import { BUILDING_DEFS, UNIT_DEFS } from './tech.js';
+
 export class EnemyAI {
   constructor(game) {
     this.game = game;
@@ -61,6 +63,9 @@ export class EnemyAI {
     const hasPower = buildings.some(b => b.type === 'power' && !b.isUnderConstruction);
     const hasRefinery = buildings.some(b => b.type === 'refinery' && !b.isUnderConstruction);
     const hasBarracks = buildings.some(b => b.type === 'barracks' && !b.isUnderConstruction);
+    const hasFence = buildings.some(b => b.type === 'fence' && !b.isUnderConstruction);
+    const hasTurret = buildings.some(b => b.type === 'turret' && !b.isUnderConstruction);
+    const hasLaser = buildings.some(b => b.type === 'laser' && !b.isUnderConstruction);
 
     if (!hasCyard) return; // AI defeated
 
@@ -93,9 +98,30 @@ export class EnemyAI {
         return;
       }
 
+      const nextLevel = this.game.getCurrentLevel('enemy').id;
+      if (nextLevel === 'basic' && this.game.enemyCredits > 3200 && this.game.upgradeEnemyLevel()) return;
+      if (nextLevel === 'improved' && this.game.enemyCredits > 5500 && this.game.upgradeEnemyLevel()) return;
+      if (nextLevel === 'advanced' && this.game.enemyCredits > 9000 && this.game.upgradeEnemyLevel()) return;
+
+      if (this.game.canUseBuilding('enemy', 'fence') && !hasFence && this.game.enemyCredits > 700) {
+        this.startBuildingDecision('fence', BUILDING_DEFS.fence.cost, BUILDING_DEFS.fence.duration);
+        return;
+      }
+
+      if (this.game.canUseBuilding('enemy', 'turret') && !hasTurret && this.game.enemyCredits > 1400) {
+        this.startBuildingDecision('turret', BUILDING_DEFS.turret.cost, BUILDING_DEFS.turret.duration);
+        return;
+      }
+
+      if (this.game.canUseBuilding('enemy', 'laser') && !hasLaser && this.game.enemyCredits > 2600) {
+        this.startBuildingDecision('laser', BUILDING_DEFS.laser.cost, BUILDING_DEFS.laser.duration);
+        return;
+      }
+
       // D. Build extra Barracks if credit reserves are high
       if (this.game.enemyCredits > 2500) {
-        this.startBuildingDecision(Math.random() < 0.5 ? 'power' : 'barracks', 500, 6.0);
+        const type = Math.random() < 0.5 ? 'power' : 'barracks';
+        this.startBuildingDecision(type, BUILDING_DEFS[type].cost, BUILDING_DEFS[type].duration);
         return;
       }
     }
@@ -105,17 +131,18 @@ export class EnemyAI {
       const activeBarracks = buildings.filter(b => b.type === 'barracks' && b.buildQueue.length === 0);
       
       activeBarracks.forEach(barracks => {
-        // AI chooses unit based on credit level
-        if (this.game.enemyCredits > 900 && Math.random() < 0.4) {
-          this.game.enemyCredits -= 800;
-          barracks.queueUnit('tank');
-        } else if (this.game.enemyCredits > 350 && Math.random() < 0.5) {
-          this.game.enemyCredits -= 300;
-          barracks.queueUnit('rocket');
-        } else if (this.game.enemyCredits > 120) {
-          this.game.enemyCredits -= 100;
-          barracks.queueUnit('soldier');
-        }
+        const preferred = ['bio_rocket', 'nuke_rocket', 'plane', 'tank', 'buggy', 'motorcycle']
+          .filter(type => this.game.canUseUnit('enemy', type) && this.game.enemyCredits >= UNIT_DEFS[type].cost);
+
+        if (preferred.length === 0) return;
+
+        const roll = Math.random();
+        let chosen = preferred[preferred.length - 1];
+        if (roll < 0.2) chosen = preferred[0];
+        else if (roll < 0.55) chosen = preferred[Math.min(1, preferred.length - 1)];
+
+        this.game.enemyCredits -= UNIT_DEFS[chosen].cost;
+        barracks.queueUnit(chosen);
       });
     }
 
@@ -134,6 +161,7 @@ export class EnemyAI {
   }
 
   startBuildingDecision(type, cost, duration) {
+    if (!this.game.canUseBuilding('enemy', type)) return;
     if (this.game.enemyCredits < cost) return;
 
     // Find a valid spot close to the main Construction Yard
@@ -142,7 +170,11 @@ export class EnemyAI {
 
     let tilesW = 2;
     let tilesH = 2;
-    if (type === 'refinery') { tilesW = 3; tilesH = 2; }
+    const def = BUILDING_DEFS[type];
+    if (def) {
+      tilesW = def.gridWidth;
+      tilesH = def.gridHeight;
+    }
 
     const spawnTile = this.findPlacementSpot(cyard.gridX, cyard.gridY, tilesW, tilesH);
     if (spawnTile) {
