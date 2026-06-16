@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tiberian Odyssey - RTS Game</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Main Game Container -->
+  <div id="game-container">
+    <!-- Fullscreen canvas for rendering the game map, units, and structures -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Top HUD Bar -->
+    <header id="hud">
+      <div class="hud-item" id="credits-display">
+        <span class="hud-label">CREDITS</span>
+        <span class="hud-value" id="credits-amount">$10,000</span>
+      </div>
+      <div class="hud-item" id="power-display">
+        <span class="hud-label">POWER</span>
+        <div class="power-bar-container">
+          <div class="power-bar" id="power-bar-fill" style="width: 100%;"></div>
+          <span class="power-text" id="power-ratio">100 / 100 MW</span>
+        </div>
+      </div>
+      <div class="hud-item" id="fps-display">
+        <span class="hud-label">FPS</span>
+        <span class="hud-value" id="fps-counter">60</span>
+      </div>
+    </header>
+
+    <!-- Sidebar UI for Base Control -->
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <h2>TACTICAL OVERVIEW</h2>
+      </div>
+
+      <!-- Mini-map Panel -->
+      <div class="panel-section" id="minimap-panel">
+        <div class="panel-title">RADAR NETWORK</div>
+        <div class="minimap-container">
+          <canvas id="minimap-canvas" width="160" height="160"></canvas>
+        </div>
+      </div>
+
+      <!-- Construction/Training Sidebar Panels -->
+      <div class="panel-section" id="construction-panel">
+        <div class="panel-tabs">
+          <button class="tab-btn active" id="tab-buildings">STRUCTURES</button>
+          <button class="tab-btn" id="tab-units">UNITS</button>
+        </div>
+
+        <!-- Buildings Construction Queue Grid -->
+        <div class="build-grid" id="buildings-grid">
+          <button class="build-card" id="build-cyard" title="Construction Yard: Hub for base building">
+            <span class="card-name">Const. Yard</span>
+            <span class="card-cost">$1000</span>
+            <span class="card-power">+0 MW</span>
+            <div class="build-progress" id="progress-cyard"></div>
+          </button>
+          <button class="build-card" id="build-power" title="Power Plant: Generates electrical power">
+            <span class="card-name">Power Plant</span>
+            <span class="card-cost">$300</span>
+            <span class="card-power">+100 MW</span>
+            <div class="build-progress" id="progress-power"></div>
+          </button>
+          <button class="build-card" id="build-refinery" title="Refinery: Processes harvested minerals into credits. Spawns one Harvester.">
+            <span class="card-name">Ore Refinery</span>
+            <span class="card-cost">$2000</span>
+            <span class="card-power">-40 MW</span>
+            <div class="build-progress" id="progress-refinery"></div>
+          </button>
+          <button class="build-card" id="build-barracks" title="Barracks: Trains infantry units">
+            <span class="card-name">Barracks</span>
+            <span class="card-cost">$500</span>
+            <span class="card-power">-20 MW</span>
+            <div class="build-progress" id="progress-barracks"></div>
+          </button>
+        </div>
+
+        <!-- Units Training Queue Grid (Hidden by default) -->
+        <div class="build-grid hidden" id="units-grid">
+          <button class="build-card" id="train-harvester" title="Harvester: Gathers resources from ore fields">
+            <span class="card-name">Harvester</span>
+            <span class="card-cost">$1000</span>
+            <div class="build-progress" id="progress-harvester"></div>
+          </button>
+          <button class="build-card" id="train-soldier" title="Rifleman: Basic anti-infantry combat unit">
+            <span class="card-name">Rifleman</span>
+            <span class="card-cost">$100</span>
+            <div class="build-progress" id="progress-soldier"></div>
+          </button>
+          <button class="build-card" id="train-rocket" title="Rocket Soldier: Anti-armor unit">
+            <span class="card-name">Rocket Soldier</span>
+            <span class="card-cost">$300</span>
+            <div class="build-progress" id="progress-rocket"></div>
+          </button>
+          <button class="build-card" id="train-tank" title="Medium Tank: Direct assault armored vehicle">
+            <span class="card-name">Medium Tank</span>
+            <span class="card-cost">$800</span>
+            <div class="build-progress" id="progress-tank"></div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Action status and alerts panel -->
+      <div id="status-panel">
+        <div id="status-text">SYSTEM ONLINE. PLACE CONSTRUCTION YARD TO BEGIN.</div>
+      </div>
+    </aside>
+
+    <!-- Placement overlay helper for base buildings -->
+    <div id="placement-ghost" class="hidden"></div>
+  </div>
+
+  <!-- Entry Script (loads the modular ES6 architecture) -->
+  <script type="module" src="js/game.js"></script>
+</body>
+</html>
