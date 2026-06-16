@@ -1,14 +1,14 @@
 /**
- * UI Manager for Tiberian Odyssey
- * Handles tab switching, sidebar building queues, unit training queue dispatch,
- * tech tree validation, HUD updates, and status messages.
+ * UI Manager for Tiberian Odyssey (Isometric 2.5D Upgrade)
+ * Handles HUD bindings, building placements, music state updates,
+ * radar network projection, and dynamic hovering tooltips.
  */
 
 export class UIManager {
   constructor(game) {
     this.game = game;
 
-    // Cache DOM Elements
+    // Cache DOM elements
     this.creditsDisplay = document.getElementById('credits-amount');
     this.powerRatio = document.getElementById('power-ratio');
     this.powerBarFill = document.getElementById('power-bar-fill');
@@ -21,20 +21,25 @@ export class UIManager {
     this.buildingsGrid = document.getElementById('buildings-grid');
     this.unitsGrid = document.getElementById('units-grid');
 
-    // Sidebar Building Construction variables (Built inside sidebar, then placed)
-    this.sidebarBuilding = null; // building type currently under construction ('power', 'refinery', 'barracks', 'cyard')
-    this.sidebarProgress = 0; // 0 to 1
+    // Sidebar Building Construction variables
+    this.sidebarBuilding = null;
+    this.sidebarProgress = 0;
     this.sidebarCost = 0;
     this.sidebarDuration = 0;
-    this.sidebarState = 'idle'; // 'idle', 'building', 'ready'
+    this.sidebarState = 'idle';
 
-    this.selectedBuilding = null; // Currently selected structure
+    this.selectedBuilding = null;
+
+    // Create dynamic Hover Tooltip element
+    this.hoverTooltip = document.createElement('div');
+    this.hoverTooltip.id = 'structure-tooltip';
+    this.hoverTooltip.className = 'structure-label hidden';
+    document.body.appendChild(this.hoverTooltip);
 
     this.initListeners();
   }
 
   initListeners() {
-    // Tab Switching
     this.tabBuildings.addEventListener('click', () => {
       this.tabBuildings.classList.add('active');
       this.tabUnits.classList.remove('active');
@@ -49,13 +54,11 @@ export class UIManager {
       this.buildingsGrid.classList.add('hidden');
     });
 
-    // Structure Buttons
     document.getElementById('build-cyard').addEventListener('click', () => this.startSidebarBuild('cyard', 1000, 8.0));
     document.getElementById('build-power').addEventListener('click', () => this.startSidebarBuild('power', 300, 4.0));
     document.getElementById('build-refinery').addEventListener('click', () => this.startSidebarBuild('refinery', 2000, 10.0));
     document.getElementById('build-barracks').addEventListener('click', () => this.startSidebarBuild('barracks', 500, 6.0));
 
-    // Unit Buttons (Trains inside structures)
     document.getElementById('train-harvester').addEventListener('click', () => this.queueUnitTraining('harvester'));
     document.getElementById('train-soldier').addEventListener('click', () => this.queueUnitTraining('soldier'));
     document.getElementById('train-rocket').addEventListener('click', () => this.queueUnitTraining('rocket'));
@@ -66,9 +69,6 @@ export class UIManager {
     this.statusText.innerText = msg.toUpperCase();
   }
 
-  /**
-   * Selection change callback
-   */
   onBuildingSelected(building) {
     this.selectedBuilding = building;
     if (building) {
@@ -79,8 +79,9 @@ export class UIManager {
   }
 
   startSidebarBuild(type, cost, duration) {
+    if (this.game.state !== 'playing') return;
+
     if (this.sidebarState === 'ready' && this.sidebarBuilding === type) {
-      // Re-click "READY" structure to enter placement mode
       this.enterPlacementMode(type, cost);
       return;
     }
@@ -90,13 +91,11 @@ export class UIManager {
       return;
     }
 
-    // Check credits
     if (this.game.playerCredits < cost) {
       this.setStatusText("INSUFFICIENT CREDITS.");
       return;
     }
 
-    // Start construction in sidebar
     this.sidebarBuilding = type;
     this.sidebarProgress = 0;
     this.sidebarCost = cost;
@@ -109,7 +108,6 @@ export class UIManager {
     this.game.placementType = type;
     this.game.placementCost = cost;
 
-    // Define footprints in tiles
     let tilesW = 2;
     let tilesH = 2;
     if (type === 'cyard') { tilesW = 3; tilesH = 3; }
@@ -120,16 +118,17 @@ export class UIManager {
     this.game.ghostWPx = tilesW * this.game.grid.tileSize;
     this.game.ghostHPx = tilesH * this.game.grid.tileSize;
 
-    // Unhide HTML placement ghost indicator
+    // Ghost element is now drawn on canvas in game.draw() directly, hide HTML helper
     const ghost = document.getElementById('placement-ghost');
-    ghost.classList.remove('hidden');
-    document.body.style.cursor = 'crosshair';
+    if (ghost) ghost.classList.add('hidden');
     
+    document.body.style.cursor = 'crosshair';
     this.setStatusText(`SELECT PLACEMENT COORDINATES FOR ${type.toUpperCase()}`);
   }
 
   queueUnitTraining(type) {
-    // Check if player has the factory building for this unit type
+    if (this.game.state !== 'playing') return;
+
     let parentBuildingType = 'barracks';
     if (type === 'harvester') {
       parentBuildingType = 'refinery';
@@ -143,7 +142,6 @@ export class UIManager {
       return;
     }
 
-    // Cost checks
     let cost = 100;
     if (type === 'rocket') cost = 300;
     if (type === 'tank') cost = 800;
@@ -154,7 +152,6 @@ export class UIManager {
       return;
     }
 
-    // Deduct credits and queue in structure
     this.game.playerCredits -= cost;
     parentBuilding.queueUnit(type);
     this.setStatusText(`TRAINING ${type.toUpperCase()}... QUEUED: ${parentBuilding.buildQueue.length}`);
@@ -197,14 +194,12 @@ export class UIManager {
   }
 
   update(dt) {
-    // 1. Process sidebar building timer progress
     this.updateSidebarBuild(dt);
 
-    // 2. Update HUD Values
     this.creditsDisplay.innerText = `$${Math.floor(this.game.playerCredits)}`;
     this.fpsCounter.innerText = Math.round(this.game.fps);
 
-    // Power Bar calculation
+    // Power Calculation
     let powerGen = 0;
     let powerDraw = 0;
     this.game.playerEntities.forEach(ent => {
@@ -224,31 +219,81 @@ export class UIManager {
       this.powerBarFill.classList.remove('low-power');
     }
 
-    // 3. Tech Tree availability evaluation
     this.updateTechButtons(powerGen, powerDraw);
+    
+    // Update hovering labels overlay
+    this.updateHoverLabels();
 
-    // 4. Render radar minimap
     this.drawMinimap();
   }
 
   updateTechButtons(powerGen, powerDraw) {
+    if (this.game.state !== 'playing') {
+      // Disable everything on game over
+      const allButtons = document.querySelectorAll('.build-card');
+      allButtons.forEach(btn => btn.disabled = true);
+      return;
+    }
+
     const friendlyBuildings = this.game.playerEntities.filter(b => b.isBuilding && !b.isDead && !b.isUnderConstruction);
     const hasCyard = friendlyBuildings.some(b => b.type === 'cyard');
     const hasPower = friendlyBuildings.some(b => b.type === 'power');
     const hasRefinery = friendlyBuildings.some(b => b.type === 'refinery');
     const hasBarracks = friendlyBuildings.some(b => b.type === 'barracks');
 
-    // Build buttons disabled status
     document.getElementById('build-cyard').disabled = this.sidebarState !== 'idle' && this.sidebarBuilding !== 'cyard';
     document.getElementById('build-power').disabled = !hasCyard || (this.sidebarState !== 'idle' && this.sidebarBuilding !== 'power');
     document.getElementById('build-refinery').disabled = !hasPower || (this.sidebarState !== 'idle' && this.sidebarBuilding !== 'refinery');
     document.getElementById('build-barracks').disabled = !hasRefinery || (this.sidebarState !== 'idle' && this.sidebarBuilding !== 'barracks');
 
-    // Train units disabled status
     document.getElementById('train-harvester').disabled = !hasRefinery;
     document.getElementById('train-soldier').disabled = !hasBarracks;
     document.getElementById('train-rocket').disabled = !hasBarracks;
     document.getElementById('train-tank').disabled = !hasBarracks;
+  }
+
+  updateHoverLabels() {
+    const ent = this.game.hoveredEntity;
+    
+    // Only draw hovering cards for buildings
+    if (ent && ent.isBuilding && !ent.isDead) {
+      const factionText = ent.faction === 'player' ? 'PLAYER' : 'ENEMY';
+      const factionClass = ent.faction === 'player' ? '' : 'enemy';
+      
+      let queueText = 'None';
+      if (ent.buildQueue.length > 0) {
+        queueText = `${ent.buildQueue[0].type.toUpperCase()} (${Math.floor(ent.trainingProgress * 100)}%)`;
+      }
+
+      let statusMsg = ent.isUnderConstruction ? `CONSTRUCTING (${Math.floor(ent.constructionProgress * 100)}%)` : 'OPERATIONAL';
+
+      this.hoverTooltip.innerHTML = `
+        <div class="label-title ${factionClass}">${this.getBuildingName(ent.type)}</div>
+        <div class="label-row"><span class="label-label">Faction:</span><span class="label-value">${factionText}</span></div>
+        <div class="label-row"><span class="label-label">Health:</span><span class="label-value">${Math.floor(ent.health)}/${ent.maxHealth}</span></div>
+        <div class="label-row"><span class="label-label">Status:</span><span class="label-value green">${statusMsg}</span></div>
+        <div class="label-row"><span class="label-label">Power usage:</span><span class="label-value">${ent.powerUsage} MW</span></div>
+        <div class="label-row"><span class="label-label">Power prod:</span><span class="label-value green">${ent.powerProduction} MW</span></div>
+        <div class="label-row"><span class="label-label">Training Q:</span><span class="label-value">${queueText}</span></div>
+      `;
+
+      // Float tooltip slightly offsets cursor to prevent overlaps
+      this.hoverTooltip.style.left = `${this.game.input.mouseX + 15}px`;
+      this.hoverTooltip.style.top = `${this.game.input.mouseY + 15}px`;
+      this.hoverTooltip.classList.remove('hidden');
+    } else {
+      this.hoverTooltip.classList.add('hidden');
+    }
+  }
+
+  getBuildingName(type) {
+    switch(type) {
+      case 'cyard': return 'CONSTRUCTION YARD';
+      case 'power': return 'POWER PLANT';
+      case 'refinery': return 'ORE REFINERY';
+      case 'barracks': return 'BARRACKS';
+      default: return 'STRUCTURE';
+    }
   }
 
   drawMinimap() {
@@ -256,11 +301,10 @@ export class UIManager {
     const mapW = this.game.grid.width;
     const mapH = this.game.grid.height;
     
-    // Scale factor
     const cellW = this.minimapCanvas.width / mapW;
     const cellH = this.minimapCanvas.height / mapH;
 
-    ctx.fillStyle = '#060a0c'; // Very dark gray-blue background
+    ctx.fillStyle = '#060a0c';
     ctx.fillRect(0, 0, this.minimapCanvas.width, this.minimapCanvas.height);
 
     // Draw terrain
@@ -268,23 +312,22 @@ export class UIManager {
       for (let y = 0; y < mapH; y++) {
         const tile = this.game.grid.tiles[x][y];
         if (tile.type === 'rock') {
-          ctx.fillStyle = '#263238'; // Rock gray
+          ctx.fillStyle = '#263238';
           ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
         } else if (tile.type === 'ore') {
-          ctx.fillStyle = '#00e676'; // Tiberium green
+          ctx.fillStyle = '#00e676';
           ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
         }
       }
     }
 
-    // Draw Buildings & Units
+    // Draw Entities (flat representations inside tactical matrix)
     const drawDots = (entities, color) => {
       ctx.fillStyle = color;
       entities.forEach(ent => {
         if (ent.isDead) return;
 
         if (ent.isBuilding) {
-          // Draw rectangle matching building footprint
           ctx.fillRect(
             ent.gridX * cellW, 
             ent.gridY * cellH, 
@@ -292,7 +335,6 @@ export class UIManager {
             ent.gridHeight * cellH
           );
         } else {
-          // Draw small unit dot
           const ux = Math.floor(ent.x / this.game.grid.tileSize);
           const uy = Math.floor(ent.y / this.game.grid.tileSize);
           ctx.fillRect(ux * cellW - 1, uy * cellH - 1, cellW + 1, cellH + 1);
@@ -300,18 +342,35 @@ export class UIManager {
       });
     };
 
-    drawDots(this.game.playerEntities, 'oklch(0.78 0.18 195)'); // Cyan dots
-    drawDots(this.game.enemyEntities, 'oklch(0.62 0.22 25)');    // Red dots
+    drawDots(this.game.playerEntities, 'oklch(0.78 0.18 195)');
+    drawDots(this.game.enemyEntities, 'oklch(0.62 0.22 25)');
 
-    // Draw Camera Viewport rectangle
+    // Draw projected Camera Viewport on minimap
     const cam = this.game.camera;
-    const vx = (cam.x / (mapW * this.game.grid.tileSize)) * this.minimapCanvas.width;
-    const vy = (cam.y / (mapH * this.game.grid.tileSize)) * this.minimapCanvas.height;
-    const vw = (cam.width / (mapW * this.game.grid.tileSize)) * this.minimapCanvas.width;
-    const vh = (cam.height / (mapH * this.game.grid.tileSize)) * this.minimapCanvas.height;
+    const getGridCellCoords = (wx, wy) => {
+      // Simplified grid cell projections for viewport outline
+      const U = (wx - this.game.grid.height * this.game.grid.halfW) / this.game.grid.halfW;
+      const V = wy / this.game.grid.halfH;
+      return {
+        x: Math.min(mapW - 1, Math.max(0, (V + U) / 2)),
+        y: Math.min(mapH - 1, Math.max(0, (V - U) / 2))
+      };
+    };
+
+    // Calculate grid coordinates of the four corners of screen viewport
+    const tl = getGridCellCoords(cam.x, cam.y);
+    const tr = getGridCellCoords(cam.x + cam.width, cam.y);
+    const br = getGridCellCoords(cam.x + cam.width, cam.y + cam.height);
+    const bl = getGridCellCoords(cam.x, cam.y + cam.height);
 
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 1;
-    ctx.strokeRect(vx, vy, vw, vh);
+    ctx.beginPath();
+    ctx.moveTo(tl.x * cellW, tl.y * cellH);
+    ctx.lineTo(tr.x * cellW, tr.y * cellH);
+    ctx.lineTo(br.x * cellW, br.y * cellH);
+    ctx.lineTo(bl.x * cellW, bl.y * cellH);
+    ctx.closePath();
+    ctx.stroke();
   }
 }

@@ -4,23 +4,22 @@ export class Unit extends Entity {
   constructor(id, faction, type, x, y, speed, maxHealth, damage = 0, attackRange = 0) {
     super(id, faction, maxHealth, maxHealth);
     this.type = type; // 'soldier', 'rocket', 'tank', 'harvester'
-    this.x = x; // world X
-    this.y = y; // world Y
-    this.speed = speed; // world pixels per sec
+    this.x = x; // World X (isometric space)
+    this.y = y; // World Y (isometric space)
+    this.speed = speed;
     this.radius = type === 'tank' || type === 'harvester' ? 14 : 7;
     
     this.path = [];
     this.pathIndex = 0;
-    this.state = 'idle'; // 'idle', 'moving', 'attacking', 'mining', 'unloading'
+    this.state = 'idle';
     
     // Combat
     this.damage = damage;
     this.attackRange = attackRange;
-    this.attackCooldown = type === 'tank' ? 1.5 : 0.6; // seconds
+    this.attackCooldown = type === 'tank' ? 1.5 : 0.6;
     this.lastAttackTime = 0;
     this.combatTarget = null;
     
-    // Direction angle (in radians)
     this.angle = 0;
     this.turretAngle = 0;
   }
@@ -28,7 +27,7 @@ export class Unit extends Entity {
   update(dt, game) {
     if (this.isDead) return;
 
-    // Tiberium damage: infantry standing on ore takes very minor damage over time
+    // Tiberium toxicity for infantry
     if ((this.type === 'soldier' || this.type === 'rocket') && Math.random() < 0.005) {
       const tile = game.grid.getTileAtWorld(this.x, this.y);
       if (tile && tile.type === 'ore') {
@@ -36,7 +35,6 @@ export class Unit extends Entity {
       }
     }
 
-    // Process state machine
     switch (this.state) {
       case 'idle':
         this.updateIdle(game);
@@ -47,19 +45,14 @@ export class Unit extends Entity {
       case 'attacking':
         this.updateAttacking(dt, game);
         break;
-      case 'mining':
-      case 'unloading':
-        // Overridden in Harvester subclass
-        break;
     }
   }
 
   updateIdle(game) {
-    // Basic automatic guard mode: if combat unit, look for nearby enemies
     if (this.type !== 'harvester' && this.damage > 0) {
       const enemies = this.faction === 'player' ? game.enemyEntities : game.playerEntities;
       let closestEnemy = null;
-      let minDist = this.attackRange * 1.5; // Aggro range slightly larger than attack range
+      let minDist = this.attackRange * 1.5;
 
       for (const enemy of enemies) {
         if (enemy.isDead) continue;
@@ -85,20 +78,20 @@ export class Unit extends Entity {
     }
 
     const currentTargetTile = this.path[this.pathIndex];
-    const targetWorldX = (currentTargetTile.x + 0.5) * game.grid.tileSize;
-    const targetWorldY = (currentTargetTile.y + 0.5) * game.grid.tileSize;
+    // Retrieve isometric coordinates of the destination tile
+    const coords = game.grid.getTileCoords(currentTargetTile.x, currentTargetTile.y);
+    const targetWorldX = coords.x;
+    const targetWorldY = coords.y;
 
     const dx = targetWorldX - this.x;
     const dy = targetWorldY - this.y;
     const dist = Math.hypot(dx, dy);
 
-    // Turn towards target
     this.angle = Math.atan2(dy, dx);
-    this.turretAngle = this.angle; // Lock turret to body angle during move
+    this.turretAngle = this.angle;
 
     const moveStep = this.speed * dt;
     if (dist <= moveStep) {
-      // Snapped to node
       this.x = targetWorldX;
       this.y = targetWorldY;
       this.pathIndex++;
@@ -108,7 +101,6 @@ export class Unit extends Entity {
         this.path = [];
       }
     } else {
-      // Standard linear interpolation
       this.x += (dx / dist) * moveStep;
       this.y += (dy / dist) * moveStep;
     }
@@ -126,20 +118,17 @@ export class Unit extends Entity {
     const dist = Math.hypot(dx, dy);
 
     this.angle = Math.atan2(dy, dx);
-    this.turretAngle = this.angle; // Point turret to target
+    this.turretAngle = this.angle;
 
     if (dist <= this.attackRange) {
-      // In range: stop moving and attack!
       this.path = [];
-      
       const now = game.currentTime;
       if (now - this.lastAttackTime >= this.attackCooldown) {
         this.shoot(game);
         this.lastAttackTime = now;
       }
     } else {
-      // Out of range: pathfind to follow target
-      if (Math.random() < 0.05) { // Throttle pathfinding to avoid performance drops
+      if (Math.random() < 0.05) {
         const startTile = game.grid.getTileAtWorld(this.x, this.y);
         const endTile = game.grid.getTileAtWorld(this.combatTarget.x, this.combatTarget.y);
         const newPath = game.grid.findPath(startTile, endTile, this);
@@ -153,7 +142,6 @@ export class Unit extends Entity {
   }
 
   shoot(game) {
-    // Create visual projectile
     game.projectiles.push(new Projectile(
       this.x, 
       this.y, 
@@ -169,107 +157,97 @@ export class Unit extends Entity {
     const screenX = this.x - camera.x;
     const screenY = this.y - camera.y;
 
-    // Draw unit shadow (offset circle)
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-    ctx.beginPath();
-    ctx.arc(screenX + 2, screenY + 2, this.radius, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Faction color
     const factionColor = this.faction === 'player' ? 'oklch(0.78 0.18 195)' : 'oklch(0.62 0.22 25)';
 
-    // Unit-specific graphics
-    if (this.type === 'soldier') {
-      // Small circle with gun line
+    // 1. Draw flat shadow on grid floor (squeezed circle)
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.beginPath();
+    ctx.ellipse(screenX + 2, screenY + 2, this.radius, this.radius * 0.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 2. Draw mobile unit models
+    if (this.type === 'soldier' || this.type === 'rocket') {
+      // Draw infantry standing vertically (unsquashed Y to stand upright)
+      const isRocket = this.type === 'rocket';
+      
+      // Draw upright body capsule
       ctx.fillStyle = factionColor;
       ctx.beginPath();
-      ctx.arc(screenX, screenY, this.radius, 0, Math.PI * 2);
+      ctx.arc(screenX, screenY - 6, 4, 0, Math.PI * 2); // head
       ctx.fill();
-      ctx.strokeStyle = '#000000';
+      ctx.strokeStyle = '#000';
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      // Gun orientation
-      ctx.strokeStyle = '#dddddd';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(screenX, screenY);
-      ctx.lineTo(screenX + Math.cos(this.angle) * (this.radius + 3), screenY + Math.sin(this.angle) * (this.radius + 3));
-      ctx.stroke();
+      ctx.fillStyle = isRocket ? 'oklch(0.7 0.2 45)' : '#41525c'; // rocket orange chest vs soldier gray-blue chest
+      ctx.fillRect(screenX - 3, screenY - 2, 6, 8);
+      ctx.strokeStyle = '#000';
+      ctx.strokeRect(screenX - 3, screenY - 2, 6, 8);
 
-    } else if (this.type === 'rocket') {
-      // Slightly larger orange-highlighted helmet soldier
-      ctx.fillStyle = factionColor;
+      // Weapon line
+      ctx.strokeStyle = '#222';
+      ctx.lineWidth = 1.8;
       ctx.beginPath();
-      ctx.arc(screenX, screenY, this.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#000000';
+      ctx.moveTo(screenX, screenY + 2);
+      ctx.lineTo(screenX + Math.cos(this.angle) * 8, screenY + 2 + Math.sin(this.angle) * 4);
       ctx.stroke();
-
-      // Shoulder launcher barrel
-      ctx.fillStyle = '#555555';
-      ctx.save();
-      ctx.translate(screenX, screenY);
-      ctx.rotate(this.angle);
-      ctx.fillRect(-2, -this.radius - 2, 8, 4);
-      ctx.restore();
 
     } else if (this.type === 'tank') {
-      // Tank body (rotates with movement angle)
+      // Draw 2.5D Armored Tank (chassis lies flat on ground)
       ctx.save();
       ctx.translate(screenX, screenY);
+      ctx.scale(1, 0.5); // Project tracks & body chassis
       ctx.rotate(this.angle);
-      
+
       // Tracks
       ctx.fillStyle = '#2b3033';
       ctx.fillRect(-12, -9, 24, 4);
       ctx.fillRect(-12, 5, 24, 4);
 
-      // Chassis
+      // Chassis body
       ctx.fillStyle = factionColor;
       ctx.fillRect(-10, -6, 20, 12);
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 1;
       ctx.strokeRect(-10, -6, 20, 12);
-      
+
       ctx.restore();
 
-      // Tank turret (rotates towards target)
+      // Draw Turret dome and barrel slightly higher to give volumetric height
+      const heightOffset = -5; // draw 5px above ground level
       ctx.save();
-      ctx.translate(screenX, screenY);
+      ctx.translate(screenX, screenY + heightOffset);
+      ctx.scale(1, 0.5); // Project turret
       ctx.rotate(this.turretAngle);
 
-      // Gun barrel
-      ctx.fillStyle = '#888888';
+      // Barrel
+      ctx.fillStyle = '#9eabb5';
       ctx.fillRect(0, -2, 16, 4);
       ctx.strokeStyle = '#000000';
       ctx.strokeRect(0, -2, 16, 4);
 
-      // Turret dome
+      // Turret Dome
       ctx.fillStyle = this.faction === 'player' ? 'oklch(0.68 0.15 195)' : 'oklch(0.52 0.18 25)';
       ctx.beginPath();
-      ctx.arc(0, 0, 6, 0, Math.PI * 2);
+      ctx.arc(0, 0, 7, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
 
       ctx.restore();
     }
 
-    // Selection ring & health overlay
-    this.drawSelectionAndHP(ctx, camera, screenX, screenY, this.radius * 2, this.radius * 2);
+    // 3. Render flat selection rings
+    this.drawSelectionAndHP(ctx, camera, screenX, screenY, this.radius * 1.5, this.radius * 1.5);
   }
 }
 
-/**
- * Harvester unit with automated ore mining state machine
- */
 export class Harvester extends Unit {
   constructor(id, faction, x, y) {
-    super(id, faction, 'harvester', x, y, 70, 300); // Harvesters are slower but heavy-duty
+    super(id, faction, 'harvester', x, y, 70, 300);
     this.cargo = 0;
     this.maxCargo = 500;
-    this.miningRate = 75; // resource gathered per second
-    this.depositRate = 200; // credits processed per second
+    this.miningRate = 75;
+    this.depositRate = 200;
     
     this.miningTargetTile = null;
     this.depositTargetRefinery = null;
@@ -295,13 +273,11 @@ export class Harvester extends Unit {
   }
 
   updateIdleHarvester(game) {
-    // If cargo is full, go dump it
     if (this.cargo >= this.maxCargo) {
       this.findRefineryAndGo(game);
       return;
     }
 
-    // If we have room, look for nearest ore tile
     if (this.cargo < this.maxCargo) {
       const nearestOre = this.findNearestOre(game);
       if (nearestOre) {
@@ -343,21 +319,18 @@ export class Harvester extends Unit {
   }
 
   updateMining(dt, game) {
-    // Verify mining tile still has resources
     if (!this.miningTargetTile || this.miningTargetTile.type !== 'ore' || this.miningTargetTile.resourceAmount <= 0) {
       this.miningTargetTile = null;
       this.state = 'idle';
       return;
     }
 
-    // Mine crystals
     const amountToMine = Math.min(this.miningRate * dt, this.maxCargo - this.cargo);
     const actualMined = Math.min(amountToMine, this.miningTargetTile.resourceAmount);
 
     this.cargo += actualMined;
     this.miningTargetTile.resourceAmount -= actualMined;
 
-    // If empty, clean tile type
     if (this.miningTargetTile.resourceAmount <= 0) {
       this.miningTargetTile.type = 'grass';
       this.miningTargetTile = null;
@@ -365,9 +338,9 @@ export class Harvester extends Unit {
       return;
     }
 
-    // Rotate harvester towards mining spot
-    const dx = (this.miningTargetTile.x + 0.5) * game.grid.tileSize - this.x;
-    const dy = (this.miningTargetTile.y + 0.5) * game.grid.tileSize - this.y;
+    const coords = game.grid.getTileCoords(this.miningTargetTile.x, this.miningTargetTile.y);
+    const dx = coords.x - this.x;
+    const dy = coords.y - this.y;
     this.angle = Math.atan2(dy, dx);
 
     if (this.cargo >= this.maxCargo) {
@@ -382,10 +355,9 @@ export class Harvester extends Unit {
     if (refineries.length === 0) {
       this.state = 'idle';
       this.path = [];
-      return; // No refinery found
+      return;
     }
 
-    // Find nearest refinery
     let nearest = null;
     let minDist = Infinity;
     for (const ref of refineries) {
@@ -417,29 +389,25 @@ export class Harvester extends Unit {
       return;
     }
 
-    // Unload cargo
     const amountToUnload = Math.min(this.depositRate * dt, this.cargo);
     this.cargo -= amountToUnload;
 
-    // Credit gain
     if (this.faction === 'player') {
       game.playerCredits += amountToUnload;
     } else {
       game.enemyCredits += amountToUnload;
     }
 
-    // Face refinery
     const dx = this.depositTargetRefinery.x - this.x;
     const dy = this.depositTargetRefinery.y - this.y;
     this.angle = Math.atan2(dy, dx);
 
     if (this.cargo <= 0) {
       this.cargo = 0;
-      this.state = 'idle'; // automatically goes back to mining
+      this.state = 'idle';
     }
   }
 
-  // Override updateMovement to trigger mining/unloading states when adjacent
   updateMovement(dt, game) {
     if (this.path.length === 0 || this.pathIndex >= this.path.length) {
       this.state = 'idle';
@@ -448,8 +416,9 @@ export class Harvester extends Unit {
     }
 
     const currentTargetTile = this.path[this.pathIndex];
-    const targetWorldX = (currentTargetTile.x + 0.5) * game.grid.tileSize;
-    const targetWorldY = (currentTargetTile.y + 0.5) * game.grid.tileSize;
+    const coords = game.grid.getTileCoords(currentTargetTile.x, currentTargetTile.y);
+    const targetWorldX = coords.x;
+    const targetWorldY = coords.y;
 
     const dx = targetWorldX - this.x;
     const dy = targetWorldY - this.y;
@@ -457,21 +426,20 @@ export class Harvester extends Unit {
 
     this.angle = Math.atan2(dy, dx);
 
-    // Check if we are heading to harvest and are adjacent to target tile
+    // Adjacent checks in isometric space
     if (this.miningTargetTile && this.pathIndex === this.path.length - 1) {
-      const tileDist = Math.hypot(this.miningTargetTile.x * game.grid.tileSize + game.grid.tileSize / 2 - this.x, 
-                                  this.miningTargetTile.y * game.grid.tileSize + game.grid.tileSize / 2 - this.y);
-      if (tileDist <= game.grid.tileSize * 1.5) {
+      const tileCoords = game.grid.getTileCoords(this.miningTargetTile.x, this.miningTargetTile.y);
+      const tileDist = Math.hypot(tileCoords.x - this.x, tileCoords.y - this.y);
+      if (tileDist <= game.grid.tileSize * 2.0) {
         this.state = 'mining';
         this.path = [];
         return;
       }
     }
 
-    // Check if we are heading to unload and are adjacent to refinery
     if (this.depositTargetRefinery && this.pathIndex === this.path.length - 1) {
       const bDist = Math.hypot(this.depositTargetRefinery.x - this.x, this.depositTargetRefinery.y - this.y);
-      if (bDist <= game.grid.tileSize * 2.2) {
+      if (bDist <= game.grid.tileSize * 2.8) {
         this.state = 'unloading';
         this.path = [];
         return;
@@ -496,21 +464,22 @@ export class Harvester extends Unit {
     // Draw shadow
     ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
     ctx.beginPath();
-    ctx.arc(screenX + 3, screenY + 3, this.radius, 0, Math.PI * 2);
+    ctx.ellipse(screenX + 3, screenY + 2, this.radius, this.radius * 0.5, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Body
+    // Draw Harvester chassis
     ctx.save();
     ctx.translate(screenX, screenY);
+    ctx.scale(1, 0.5); // Project flat to ground
     ctx.rotate(this.angle);
 
     // Tracks
     ctx.fillStyle = '#1c1f21';
-    ctx.fillRect(-15, -11, 30, 4);
-    ctx.fillRect(-15, 7, 30, 4);
+    ctx.fillRect(-16, -11, 32, 4);
+    ctx.fillRect(-16, 7, 32, 4);
 
     // Cab/Cargo Chassis
-    const color = this.faction === 'player' ? 'oklch(0.85 0.15 85)' : 'oklch(0.62 0.22 25)'; // Yellow body for player harvester
+    const color = this.faction === 'player' ? 'oklch(0.85 0.15 85)' : 'oklch(0.62 0.22 25)';
     ctx.fillStyle = color;
     ctx.fillRect(-13, -8, 26, 16);
     ctx.strokeStyle = '#000000';
@@ -522,9 +491,9 @@ export class Harvester extends Unit {
     ctx.strokeStyle = '#000';
     ctx.strokeRect(5, -4, 5, 8);
 
-    // Cargo indicator light based on full level
+    // Cargo indicator light
     const ratio = this.cargo / this.maxCargo;
-    ctx.fillStyle = `oklch(0.65 0.25 142 / ${ratio})`; // Green light intensifies
+    ctx.fillStyle = `oklch(0.65 0.25 142 / ${ratio})`;
     ctx.beginPath();
     ctx.arc(-8, 0, 3, 0, Math.PI * 2);
     ctx.fill();
@@ -532,22 +501,17 @@ export class Harvester extends Unit {
 
     ctx.restore();
 
-    // Selection ring & health overlay
-    this.drawSelectionAndHP(ctx, camera, screenX, screenY, this.radius * 2, this.radius * 2);
+    this.drawSelectionAndHP(ctx, camera, screenX, screenY, this.radius * 1.5, this.radius * 1.5);
     
-    // Cargo Text Overlay above selection if selected
     if (this.selected) {
       ctx.fillStyle = '#00ff66';
       ctx.font = '9px var(--font-mono)';
       ctx.textAlign = 'center';
-      ctx.fillText(`ORE: ${Math.floor(this.cargo)}/${this.maxCargo}`, screenX, screenY + this.radius + 12);
+      ctx.fillText(`ORE: ${Math.floor(this.cargo)}/${this.maxCargo}`, screenX, screenY + 16);
     }
   }
 }
 
-/**
- * Bullet / Rocket flying projectile class
- */
 export class Projectile {
   constructor(startX, startY, targetEntity, speed, damage, type, faction) {
     this.x = startX;
@@ -555,7 +519,7 @@ export class Projectile {
     this.target = targetEntity;
     this.speed = speed;
     this.damage = damage;
-    this.type = type; // 'bullet', 'rocket'
+    this.type = type;
     this.faction = faction;
     this.isDead = false;
   }
@@ -572,11 +536,8 @@ export class Projectile {
 
     const step = this.speed * dt;
     if (dist <= step) {
-      // Impact!
       this.target.takeDamage(this.damage);
       this.isDead = true;
-      
-      // Bullet flash or rocket blast particle effect
       game.particles.push(new ExplosionParticle(this.target.x, this.target.y, this.type === 'rocket' ? 12 : 5));
     } else {
       this.x += (dx / dist) * step;
@@ -594,7 +555,7 @@ export class Projectile {
       ctx.arc(screenX, screenY, 2, 0, Math.PI * 2);
       ctx.fill();
     } else if (this.type === 'rocket') {
-      // Drawing small flame trail
+      // 3D flying height arch (offset Y visually)
       ctx.fillStyle = '#ffaa33';
       ctx.beginPath();
       ctx.arc(screenX, screenY, 4, 0, Math.PI * 2);
@@ -608,15 +569,12 @@ export class Projectile {
   }
 }
 
-/**
- * Impact visual effects particles
- */
 class ExplosionParticle {
   constructor(x, y, radius) {
     this.x = x;
     this.y = y;
     this.radius = radius;
-    this.maxLife = 0.25; // seconds
+    this.maxLife = 0.25;
     this.life = 0.25;
     this.isDead = false;
   }
@@ -635,7 +593,7 @@ class ExplosionParticle {
 
     ctx.save();
     ctx.beginPath();
-    ctx.arc(screenX, screenY, this.radius * (1.5 - ratio), 0, Math.PI * 2);
+    ctx.ellipse(screenX, screenY, this.radius * (1.5 - ratio), this.radius * 0.75 * (1.5 - ratio), 0, 0, Math.PI * 2);
     ctx.fillStyle = `rgba(255, ${Math.floor(100 + 155 * ratio)}, 0, ${ratio})`;
     ctx.fill();
     ctx.restore();

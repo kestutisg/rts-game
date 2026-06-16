@@ -3,12 +3,12 @@ import { Unit, Harvester } from './unit.js';
 
 export class Building extends Entity {
   constructor(id, faction, type, gridX, gridY, tileSize) {
-    // Determine size and health based on structure type
     let maxHealth = 500;
     let gridWidth = 2;
     let gridHeight = 2;
     let powerProd = 0;
     let powerUse = 0;
+    let buildingHeight = 20; // 3D height extrusion
 
     switch (type) {
       case 'cyard':
@@ -17,6 +17,7 @@ export class Building extends Entity {
         gridHeight = 3;
         powerProd = 0;
         powerUse = 0;
+        buildingHeight = 35;
         break;
       case 'power':
         maxHealth = 600;
@@ -24,6 +25,7 @@ export class Building extends Entity {
         gridHeight = 2;
         powerProd = 100;
         powerUse = 0;
+        buildingHeight = 25;
         break;
       case 'refinery':
         maxHealth = 1000;
@@ -31,6 +33,7 @@ export class Building extends Entity {
         gridHeight = 2;
         powerProd = 0;
         powerUse = 40;
+        buildingHeight = 28;
         break;
       case 'barracks':
         maxHealth = 800;
@@ -38,6 +41,7 @@ export class Building extends Entity {
         gridHeight = 2;
         powerProd = 0;
         powerUse = 20;
+        buildingHeight = 24;
         break;
     }
 
@@ -49,30 +53,34 @@ export class Building extends Entity {
     this.gridWidth = gridWidth;
     this.gridHeight = gridHeight;
     this.isBuilding = true;
+    this.height3D = buildingHeight;
     
     this.powerProduction = powerProd;
     this.powerUsage = powerUse;
     
-    // World coordinates (center of the building structure)
-    this.x = (gridX + gridWidth / 2) * tileSize;
-    this.y = (gridY + gridHeight / 2) * tileSize;
+    // Isometric metrics to pre-calculate world coordinates
+    const mapHeight = 60; // constant grid height
+    const halfW = tileSize;
+    const halfH = tileSize / 2;
+
+    // Calculate center world coordinates for selection overlays and AI targeting
+    this.x = (gridX - gridY) * halfW + mapHeight * halfW + (gridWidth - gridHeight) * halfW / 2;
+    this.y = (gridX + gridY) * halfH + (gridWidth + gridHeight) * halfH / 2;
     
-    this.widthPx = gridWidth * tileSize;
+    this.widthPx = gridWidth * tileSize * 2; // bounding size for selection ellipses
     this.heightPx = gridHeight * tileSize;
     
-    // Construction state (when placing structure)
     this.isUnderConstruction = true;
-    this.constructionProgress = 0; // 0 to 1
-    this.constructionDuration = 4.0; // seconds to build
+    this.constructionProgress = 0;
+    this.constructionDuration = 4.0;
     
-    // Unit production states
     this.buildQueue = [];
-    this.trainingProgress = 0; // 0 to 1
+    this.trainingProgress = 0;
     
-    // Set rally point (offset to the bottom right of the structure)
+    // Rally point in world space
     this.rallyPoint = {
-      x: this.x + this.widthPx / 2 + tileSize,
-      y: this.y + this.heightPx / 2 + tileSize
+      x: this.x + (halfW * 2.5),
+      y: this.y + (halfH * 2.5)
     };
   }
 
@@ -80,9 +88,8 @@ export class Building extends Entity {
     if (this.isDead) return;
 
     const isLowPower = game.isLowPower(this.faction);
-    const speedMultiplier = isLowPower ? 0.5 : 1.0; // low power cuts building/training speed in half
+    const speedMultiplier = isLowPower ? 0.5 : 1.0;
 
-    // 1. Handle structure building phase
     if (this.isUnderConstruction) {
       this.constructionProgress += (dt / this.constructionDuration) * speedMultiplier;
       if (this.constructionProgress >= 1.0) {
@@ -90,33 +97,32 @@ export class Building extends Entity {
         this.isUnderConstruction = false;
         this.onBuildComplete(game);
       }
-      return; // Can't train units or function until built
+      return;
     }
 
-    // 2. Handle unit training queue
     if (this.buildQueue.length > 0) {
       const activeItem = this.buildQueue[0];
       
       this.trainingProgress += (dt / activeItem.duration) * speedMultiplier;
       if (this.trainingProgress >= 1.0) {
         this.spawnTrainedUnit(activeItem.type, game);
-        this.buildQueue.shift(); // remove item
+        this.buildQueue.shift();
         this.trainingProgress = 0;
       }
     }
   }
 
   onBuildComplete(game) {
-    // If Refinery, spawn a harvester immediately
     if (this.type === 'refinery') {
-      const spawnTile = game.grid.getTile(this.gridX + 1, this.gridY + 2); // place in front
+      // Spawn harvester on adjacent tile in front
+      const spawnTile = game.grid.getTile(this.gridX + 1, this.gridY + 2);
       if (spawnTile) {
-        const harvesterId = game.generateEntityId();
+        const coords = game.grid.getTileCoords(spawnTile.x, spawnTile.y);
         const harvester = new Harvester(
-          harvesterId, 
+          game.generateEntityId(), 
           this.faction, 
-          (this.gridX + 1.5) * game.grid.tileSize, 
-          (this.gridY + 2.5) * game.grid.tileSize
+          coords.x, 
+          coords.y
         );
         game.addUnit(harvester);
       }
@@ -124,7 +130,6 @@ export class Building extends Entity {
   }
 
   queueUnit(unitType) {
-    // Define cost and train duration for units
     let cost = 100;
     let duration = 3.0;
 
@@ -151,13 +156,12 @@ export class Building extends Entity {
   }
 
   spawnTrainedUnit(unitType, game) {
-    // Find a free adjacent tile to spawn unit
     let spawnTile = null;
     const searchDirs = [
       {x: 0, y: this.gridHeight}, // South
       {x: this.gridWidth, y: 0}, // East
-      {x: -1, y: 0}, // West
-      {x: 0, y: -1} // North
+      {x: -1, y: 0},
+      {x: 0, y: -1}
     ];
 
     for (const dir of searchDirs) {
@@ -170,30 +174,28 @@ export class Building extends Entity {
       }
     }
 
-    // Fallback if blocked: just spawn on first tile outside
     if (!spawnTile) {
       spawnTile = game.grid.getTile(this.gridX, this.gridY + this.gridHeight);
     }
 
     if (spawnTile) {
-      const worldX = (spawnTile.x + 0.5) * game.grid.tileSize;
-      const worldY = (spawnTile.y + 0.5) * game.grid.tileSize;
+      const coords = game.grid.getTileCoords(spawnTile.x, spawnTile.y);
       const unitId = game.generateEntityId();
       
       let unit;
       if (unitType === 'harvester') {
-        unit = new Harvester(unitId, this.faction, worldX, worldY);
+        unit = new Harvester(unitId, this.faction, coords.x, coords.y);
       } else if (unitType === 'soldier') {
-        unit = new Unit(unitId, this.faction, 'soldier', worldX, worldY, 100, 50, 8, 120);
+        unit = new Unit(unitId, this.faction, 'soldier', coords.x, coords.y, 100, 50, 8, 120);
       } else if (unitType === 'rocket') {
-        unit = new Unit(unitId, this.faction, 'rocket', worldX, worldY, 85, 45, 22, 180);
+        unit = new Unit(unitId, this.faction, 'rocket', coords.x, coords.y, 85, 45, 22, 180);
       } else if (unitType === 'tank') {
-        unit = new Unit(unitId, this.faction, 'tank', worldX, worldY, 110, 250, 45, 200);
+        unit = new Unit(unitId, this.faction, 'tank', coords.x, coords.y, 110, 250, 45, 200);
       }
 
       game.addUnit(unit);
 
-      // Order unit to move to the rally point
+      // Order unit to move to rally point
       const startTile = game.grid.getTileAtWorld(unit.x, unit.y);
       const rallyTile = game.grid.getTileAtWorld(this.rallyPoint.x, this.rallyPoint.y);
       if (startTile && rallyTile) {
@@ -208,134 +210,185 @@ export class Building extends Entity {
   }
 
   draw(ctx, camera) {
-    const screenX = this.x - camera.x;
-    const screenY = this.y - camera.y;
-
-    const left = screenX - this.widthPx / 2;
-    const top = screenY - this.heightPx / 2;
-
-    // Draw building shadow
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.fillRect(left + 6, top + 6, this.widthPx, this.heightPx);
-
-    // Main base structure colors
     const factionColor = this.faction === 'player' ? 'oklch(0.78 0.18 195)' : 'oklch(0.62 0.22 25)';
-    
-    // Draw outer foundation
-    ctx.fillStyle = '#1c2226';
-    ctx.fillRect(left, top, this.widthPx, this.heightPx);
-    ctx.strokeStyle = '#2b343b';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(left, top, this.widthPx, this.heightPx);
 
-    // Draw building inner details based on type
-    ctx.fillStyle = '#121619';
-    ctx.fillRect(left + 4, top + 4, this.widthPx - 8, this.heightPx - 8);
+    // 1. Calculate floor corner projections
+    const getScreenCoords = (gx, gy) => {
+      const coords = this.getTileCoordsLocal(gx, gy);
+      return { x: coords.x - camera.x, y: coords.y - camera.y };
+    };
+
+    const ptTop = getScreenCoords(this.gridX, this.gridY);
+    const ptRight = getScreenCoords(this.gridX + this.gridWidth, this.gridY);
+    const ptBottom = getScreenCoords(this.gridX + this.gridWidth, this.gridY + this.gridHeight);
+    const ptLeft = getScreenCoords(this.gridX, this.gridY + this.gridHeight);
+
+    // 2. Draw shadow (flat black offset footprint diamond)
+    const sxOffset = 5;
+    const syOffset = 3;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    ctx.beginPath();
+    ctx.moveTo(ptTop.x + sxOffset, ptTop.y + syOffset);
+    ctx.lineTo(ptRight.x + sxOffset, ptRight.y + syOffset);
+    ctx.lineTo(ptBottom.x + sxOffset, ptBottom.y + syOffset);
+    ctx.lineTo(ptLeft.x + sxOffset, ptLeft.y + syOffset);
+    ctx.closePath();
+    ctx.fill();
+
+    // 3. Extrude building vertical height
+    const h = this.height3D;
+    const ptTopRoof = { x: ptTop.x, y: ptTop.y - h };
+    const ptRightRoof = { x: ptRight.x, y: ptRight.y - h };
+    const ptBottomRoof = { x: ptBottom.x, y: ptBottom.y - h };
+    const ptLeftRoof = { x: ptLeft.x, y: ptLeft.y - h };
+
+    // Left wall face
+    ctx.fillStyle = '#171c20'; // dark shadow wall
+    ctx.beginPath();
+    ctx.moveTo(ptLeft.x, ptLeft.y);
+    ctx.lineTo(ptBottom.x, ptBottom.y);
+    ctx.lineTo(ptBottomRoof.x, ptBottomRoof.y);
+    ctx.lineTo(ptLeftRoof.x, ptLeftRoof.y);
+    ctx.closePath();
+    ctx.fill();
+
+    // Right wall face
+    ctx.fillStyle = '#21282d'; // medium wall
+    ctx.beginPath();
+    ctx.moveTo(ptBottom.x, ptBottom.y);
+    ctx.lineTo(ptRight.x, ptRight.y);
+    ctx.lineTo(ptRightRoof.x, ptRightRoof.y);
+    ctx.lineTo(ptBottomRoof.x, ptBottomRoof.y);
+    ctx.closePath();
+    ctx.fill();
+
+    // Roof face (flat diamond on top of extruded walls)
+    ctx.fillStyle = '#2b333a'; // light roof
+    ctx.beginPath();
+    ctx.moveTo(ptTopRoof.x, ptTopRoof.y);
+    ctx.lineTo(ptRightRoof.x, ptRightRoof.y);
+    ctx.lineTo(ptBottomRoof.x, ptBottomRoof.y);
+    ctx.lineTo(ptLeftRoof.x, ptLeftRoof.y);
+    ctx.closePath();
+    ctx.fill();
+
+    // Outline roof
+    ctx.strokeStyle = '#3a444d';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // 4. Draw type-specific decorative roof decals
+    const rx = ptTopRoof.x;
+    const ry = ptTopRoof.y + (ptBottomRoof.y - ptTopRoof.y) / 2;
+    const roofW = ptRightRoof.x - ptLeftRoof.x;
+    const roofH = ptBottomRoof.y - ptTopRoof.y;
 
     if (this.type === 'cyard') {
-      // Construction Yard: Large core generator and visual construction crane arm
+      // Large faction generator core on roof
       ctx.fillStyle = factionColor;
-      ctx.fillRect(left + 16, top + 16, this.widthPx - 32, this.heightPx - 32);
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(left + 16, top + 16, this.widthPx - 32, this.heightPx - 32);
-      
-      // Central radar dome
-      ctx.fillStyle = '#3a444d';
       ctx.beginPath();
-      ctx.arc(screenX, screenY, 14, 0, Math.PI * 2);
+      ctx.ellipse(rx, ry, roofW * 0.2, roofH * 0.2, 0, 0, Math.PI * 2);
       ctx.fill();
+      ctx.strokeStyle = '#000';
+      ctx.stroke();
+
+      // Mini rotating radar dish
+      const pulse = Date.now() / 250;
+      ctx.strokeStyle = '#78909c';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(rx, ry - 4);
+      ctx.lineTo(rx + Math.cos(pulse) * 12, ry - 4 + Math.sin(pulse) * 6);
       ctx.stroke();
 
     } else if (this.type === 'power') {
-      // Power Plant: glowing coils
-      ctx.fillStyle = '#2b343b';
-      ctx.fillRect(left + 8, top + 8, this.widthPx - 16, this.heightPx - 16);
-
-      // Glowing power cells
-      const pulseRatio = (Math.sin(Date.now() / 200) + 1.0) / 2.0; // pulsating neon glow
+      // Dual glowing coils
+      const pulseRatio = (Math.sin(Date.now() / 200) + 1.0) / 2.0;
       ctx.shadowColor = '#00ff66';
       ctx.shadowBlur = this.isUnderConstruction ? 0 : 8 * pulseRatio;
+      ctx.fillStyle = this.isUnderConstruction ? '#1c2226' : `oklch(0.8 0.22 142 / ${0.5 + 0.5 * pulseRatio})`;
       
-      ctx.fillStyle = this.isUnderConstruction ? '#222' : `oklch(0.8 0.22 142 / ${0.5 + 0.5 * pulseRatio})`;
-      ctx.fillRect(left + 12, top + 12, 10, this.heightPx - 24);
-      ctx.fillRect(left + this.widthPx - 22, top + 12, 10, this.heightPx - 24);
-      
+      // Left coil cylinder
+      ctx.fillRect(rx - 12, ry - 14, 6, 10);
+      ctx.strokeRect(rx - 12, ry - 14, 6, 10);
+      // Right coil cylinder
+      ctx.fillRect(rx + 6, ry - 14, 6, 10);
+      ctx.strokeRect(rx + 6, ry - 14, 6, 10);
+
       ctx.shadowBlur = 0;
 
     } else if (this.type === 'refinery') {
-      // Refinery: Large storage dock and processor chimney
-      ctx.fillStyle = '#22282c';
-      ctx.fillRect(left + 8, top + 8, this.widthPx - 16, this.heightPx - 16);
-
-      // Harvester unloading dock marker (neon yellow lines)
-      ctx.strokeStyle = 'oklch(0.85 0.15 85)';
-      ctx.lineWidth = 1.5;
+      // Large refinery tanks
+      ctx.fillStyle = '#455a64';
       ctx.beginPath();
-      ctx.moveTo(left + 12, top + this.heightPx - 4);
-      ctx.lineTo(left + this.widthPx - 12, top + this.heightPx - 4);
+      ctx.ellipse(rx - 15, ry - 4, 10, 8, 0, 0, Math.PI * 2);
+      ctx.ellipse(rx + 15, ry + 2, 8, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#000';
       ctx.stroke();
 
-      // Exhaust towers
-      ctx.fillStyle = '#3a4349';
-      ctx.fillRect(left + 12, top + 12, 12, 12);
-      ctx.fillRect(left + 28, top + 12, 12, 12);
-      
-      ctx.fillStyle = '#111';
-      ctx.beginPath();
-      ctx.arc(left + 18, top + 18, 3, 0, Math.PI * 2);
-      ctx.arc(left + 34, top + 18, 3, 0, Math.PI * 2);
-      ctx.fill();
+      // Exhaust chimney
+      ctx.fillStyle = '#1c2226';
+      ctx.fillRect(rx - 2, ry - 14, 5, 12);
+      ctx.strokeRect(rx - 2, ry - 14, 5, 12);
 
     } else if (this.type === 'barracks') {
-      // Barracks: Infantry training facility with a flag / logo
+      // Faction flag banner
       ctx.fillStyle = factionColor;
-      ctx.fillRect(left + 10, top + 10, this.widthPx - 20, 8); // color strip
-      
-      // Training gate
-      ctx.fillStyle = '#0f1214';
-      ctx.fillRect(left + 16, top + this.heightPx - 16, this.widthPx - 32, 14);
-      ctx.strokeStyle = '#222';
-      ctx.strokeRect(left + 16, top + this.heightPx - 16, this.widthPx - 32, 14);
+      ctx.fillRect(rx - 16, ry - 4, 32, 3);
+      ctx.strokeStyle = '#000';
+      ctx.strokeRect(rx - 16, ry - 4, 32, 3);
     }
 
-    // Draw construction grid scan effect if building
+    // 5. Draw construction grid sweep visual
     if (this.isUnderConstruction) {
+      // Slice overlay based on progress
       ctx.fillStyle = 'rgba(0, 255, 255, 0.15)';
-      ctx.fillRect(left, top, this.widthPx, this.heightPx * (1 - this.constructionProgress));
-      
+      ctx.beginPath();
+      ctx.moveTo(ptTop.x, ptTop.y - h * this.constructionProgress);
+      ctx.lineTo(ptRight.x, ptRight.y - h * this.constructionProgress);
+      ctx.lineTo(ptBottom.x, ptBottom.y - h * this.constructionProgress);
+      ctx.lineTo(ptLeft.x, ptLeft.y - h * this.constructionProgress);
+      ctx.closePath();
+      ctx.fill();
+
+      // Green scan line
       ctx.strokeStyle = 'rgba(0, 255, 255, 0.8)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(left, top + this.heightPx * (1 - this.constructionProgress));
-      ctx.lineTo(left + this.widthPx, top + this.heightPx * (1 - this.constructionProgress));
+      ctx.moveTo(ptLeft.x, ptLeft.y - h * this.constructionProgress);
+      ctx.lineTo(ptRight.x, ptRight.y - h * this.constructionProgress);
       ctx.stroke();
 
-      // Progress bar overlay on top of structure
+      // Construction progress bar overlay
+      const cy = ptTop.y + (ptBottom.y - ptTop.y) / 2 - h / 2;
       ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      ctx.fillRect(screenX - 25, screenY - 4, 50, 8);
-      ctx.fillStyle = 'oklch(0.7 0.2 45)'; // orange
-      ctx.fillRect(screenX - 25, screenY - 4, 50 * this.constructionProgress, 8);
+      ctx.fillRect(ptTop.x - 25, cy - 4, 50, 8);
+      ctx.fillStyle = 'oklch(0.7 0.2 45)';
+      ctx.fillRect(ptTop.x - 25, cy - 4, 50 * this.constructionProgress, 8);
     }
 
-    // Draw training queue progress bar
+    // 6. Draw active training queue
     if (this.buildQueue.length > 0 && !this.isUnderConstruction) {
-      const barW = this.widthPx * 0.8;
-      const bx = screenX - barW / 2;
-      const by = top + 8;
+      const barW = roofW * 0.5;
+      const bx = rx - barW / 2;
+      const by = ptTopRoof.y + 4;
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillRect(bx, by, barW, 4);
-      ctx.fillStyle = 'oklch(0.78 0.18 195)'; // cyan
-      ctx.fillRect(bx, by, barW * this.trainingProgress, 4);
-
-      // Queue length indicator
       ctx.fillStyle = 'oklch(0.78 0.18 195)';
-      ctx.font = '10px var(--font-mono)';
-      ctx.textAlign = 'right';
-      ctx.fillText(`Q:${this.buildQueue.length}`, left + this.widthPx - 4, top + 20);
+      ctx.fillRect(bx, by, barW * this.trainingProgress, 4);
     }
 
-    // Selection ring & health overlay
-    this.drawSelectionAndHP(ctx, camera, screenX, screenY, this.widthPx, this.heightPx);
+    // 7. Render flat isometric selection ellipsis around floor coordinates
+    this.drawSelectionAndHP(ctx, camera, rx, ry + h, roofW * 0.7, roofH * 1.4);
+  }
+
+  getTileCoordsLocal(x, y) {
+    const mapHeight = 60;
+    const halfW = 40; // tile width = 80, half = 40
+    const halfH = 20; // tile height = 40, half = 20
+    const worldX = (x - y) * halfW + mapHeight * halfW;
+    const worldY = (x + y) * halfH;
+    return { x: worldX, y: worldY };
   }
 }

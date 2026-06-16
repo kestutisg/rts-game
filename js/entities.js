@@ -47,28 +47,11 @@ export class Entity {
     // Draw Selection Ring if selected
     if (this.selected) {
       ctx.strokeStyle = this.faction === 'player' ? 'oklch(0.78 0.18 195)' : 'oklch(0.62 0.22 25)';
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.2;
       
-      // Draw bracket selection corners instead of a simple circle for premium feel
-      const offset = 4;
+      // Draw flat ellipse to lie flat on the 2.5D ground
       ctx.beginPath();
-      // Top Left corner
-      ctx.moveTo(screenX - width / 2 - offset, screenY - height / 2 - offset + 6);
-      ctx.lineTo(screenX - width / 2 - offset, screenY - height / 2 - offset);
-      ctx.lineTo(screenX - width / 2 - offset + 6, screenY - height / 2 - offset);
-      // Top Right corner
-      ctx.moveTo(screenX + width / 2 + offset - 6, screenY - height / 2 - offset);
-      ctx.lineTo(screenX + width / 2 + offset, screenY - height / 2 - offset);
-      ctx.lineTo(screenX + width / 2 + offset, screenY - height / 2 - offset + 6);
-      // Bottom Left corner
-      ctx.moveTo(screenX - width / 2 - offset, screenY + height / 2 + offset - 6);
-      ctx.lineTo(screenX - width / 2 - offset, screenY + height / 2 + offset);
-      ctx.lineTo(screenX - width / 2 - offset + 6, screenY + height / 2 + offset);
-      // Bottom Right corner
-      ctx.moveTo(screenX + width / 2 + offset - 6, screenY + height / 2 + offset);
-      ctx.lineTo(screenX + width / 2 + offset, screenY + height / 2 + offset);
-      ctx.lineTo(screenX + width / 2 + offset, screenY + height / 2 + offset - 6);
-      
+      ctx.ellipse(screenX, screenY, width * 0.9, height * 0.45, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
 

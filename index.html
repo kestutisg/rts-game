@@ -28,6 +28,9 @@
           <span class="power-text" id="power-ratio">100 / 100 MW</span>
         </div>
       </div>
+      <div class="hud-item" id="audio-controls">
+        <button id="music-toggle" class="hud-btn" title="Toggle synth background music">MUSIC: OFF</button>
+      </div>
       <div class="hud-item" id="fps-display">
         <span class="hud-label">FPS</span>
         <span class="hud-value" id="fps-counter">60</span>
@@ -116,6 +119,15 @@
 
     <!-- Placement overlay helper for base buildings -->
     <div id="placement-ghost" class="hidden"></div>
+
+    <!-- Fullscreen Game Over Overlay -->
+    <div id="game-over-overlay" class="hidden">
+      <div class="game-over-box">
+        <h1 id="game-over-title">MISSION ACCOMPLISHED</h1>
+        <p id="game-over-status">ALL ENEMY FORCES ELIMINATED.</p>
+        <button id="restart-btn" class="overlay-btn">RESTART SKIRMISH</button>
+      </div>
+    </div>
   </div>
 
   <!-- Entry Script (loads the modular ES6 architecture) -->

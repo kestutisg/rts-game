@@ -4,21 +4,22 @@ import { UIManager } from './ui.js';
 import { Building } from './building.js';
 import { Unit, Harvester } from './unit.js';
 import { EnemyAI } from './ai.js';
+import { AudioSynthesizer } from './audio.js';
 
 class Game {
   constructor() {
     this.canvas = document.getElementById('game-canvas');
     this.ctx = this.canvas.getContext('2d');
 
-    // Dynamic sizing
     this.resizeCanvas();
     window.addEventListener('resize', () => this.resizeCanvas());
 
-    // Game Constants
+    // Subsystems & Helpers
     this.nextEntityId = 1;
     this.currentTime = 0;
+    this.state = 'playing'; // 'playing', 'victory', 'defeat'
 
-    // Viewport Camera
+    // Camera
     this.camera = {
       x: 0,
       y: 0,
@@ -27,10 +28,10 @@ class Game {
     };
 
     // Economy
-    this.playerCredits = 5000; // Start with sufficient cash for base expansion
+    this.playerCredits = 5000;
     this.enemyCredits = 5000;
 
-    // Entities Lists
+    // Faction Entity Lists
     this.playerEntities = [];
     this.enemyEntities = [];
     this.selectedEntities = [];
@@ -45,33 +46,35 @@ class Game {
     this.ghostWPx = 0;
     this.ghostHPx = 0;
 
+    // Hovered structure label
+    this.hoveredEntity = null;
+
     // Visual order pings
     this.clickPings = [];
 
-    // FPS Counter variables
+    // Frame timing
     this.lastTime = 0;
     this.fps = 60;
     this.fpsLastUpdate = 0;
     this.fpsFrames = 0;
-
-    // Tiberium growth rate limiter
     this.lastResourceGrowTime = 0;
 
-    // Initialize subsystems (Grid first, then handlers)
-    this.grid = new Grid(60, 60, 40); // 60x60 map with 40px tiles
+    // Initialize systems
+    this.grid = new Grid(60, 60, 40);
     this.input = new InputHandler(this);
     this.ui = new UIManager(this);
     this.ai = new EnemyAI(this);
+    this.audio = new AudioSynthesizer();
 
     // Initial Setup
     this.setupStartingBases();
+    this.initHUDListeners();
 
-    // Start Loop
+    // Start Game Loop
     requestAnimationFrame((t) => this.loop(t));
   }
 
   resizeCanvas() {
-    // Canvas takes the remaining width after the sidebar
     this.canvas.width = window.innerWidth - 280;
     this.canvas.height = window.innerHeight;
     
@@ -81,34 +84,87 @@ class Game {
     }
   }
 
+  initHUDListeners() {
+    // Music Toggle listener
+    const musicBtn = document.getElementById('music-toggle');
+    if (musicBtn) {
+      musicBtn.addEventListener('click', () => {
+        const isPlaying = this.audio.toggle();
+        if (isPlaying) {
+          musicBtn.classList.add('active');
+          musicBtn.innerText = "MUSIC: ON";
+        } else {
+          musicBtn.classList.remove('active');
+          musicBtn.innerText = "MUSIC: OFF";
+        }
+      });
+    }
+
+    // Restart button listener
+    const restartBtn = document.getElementById('restart-btn');
+    if (restartBtn) {
+      restartBtn.addEventListener('click', () => {
+        this.restart();
+      });
+    }
+  }
+
   setupStartingBases() {
-    // Player spawn: Place a Construction yard and two riflemen at (8, 8)
+    // Spawn player starting structures
     this.spawnBuilding('player', 'cyard', 8, 8);
-    this.spawnBuilding('player', 'power', 8, 12); // Pre-placed power plant to avoid immediate low power
+    this.spawnBuilding('player', 'power', 8, 12);
     
-    const u1 = new Unit(this.generateEntityId(), 'player', 'soldier', 460, 360, 100, 50, 8, 120);
-    const u2 = new Unit(this.generateEntityId(), 'player', 'soldier', 480, 380, 100, 50, 8, 120);
+    // Initial units (computed isometric start points)
+    const c1 = this.grid.getTileCoords(12, 10);
+    const c2 = this.grid.getTileCoords(13, 11);
+
+    const u1 = new Unit(this.generateEntityId(), 'player', 'soldier', c1.x, c1.y, 100, 50, 8, 120);
+    const u2 = new Unit(this.generateEntityId(), 'player', 'soldier', c2.x, c2.y, 100, 50, 8, 120);
     this.addUnit(u1);
     this.addUnit(u2);
 
     // Center camera on player's construction yard
-    this.camera.x = Math.max(0, 10 * this.grid.tileSize - this.camera.width / 2);
-    this.camera.y = Math.max(0, 10 * this.grid.tileSize - this.camera.height / 2);
+    const startCoords = this.grid.getTileCoords(8, 8);
+    this.camera.x = Math.max(0, startCoords.x - this.camera.width / 2);
+    this.camera.y = Math.max(0, startCoords.y - this.camera.height / 2);
 
-    // AI spawn: Place a Construction Yard and a couple of defensive units
+    // Spawn Enemy starting structures
     const enemyCyardX = this.grid.width - 11;
     const enemyCyardY = this.grid.height - 11;
     this.spawnBuilding('enemy', 'cyard', enemyCyardX, enemyCyardY);
     this.spawnBuilding('enemy', 'power', enemyCyardX, enemyCyardY - 3);
 
-    const eu1 = new Unit(this.generateEntityId(), 'enemy', 'soldier', 
-      (enemyCyardX - 2) * this.grid.tileSize, (enemyCyardY + 1) * this.grid.tileSize, 
-      100, 50, 8, 120);
-    const eu2 = new Unit(this.generateEntityId(), 'enemy', 'soldier', 
-      (enemyCyardX - 2) * this.grid.tileSize, (enemyCyardY + 2) * this.grid.tileSize, 
-      100, 50, 8, 120);
+    const ec1 = this.grid.getTileCoords(enemyCyardX - 2, enemyCyardY + 1);
+    const ec2 = this.grid.getTileCoords(enemyCyardX - 2, enemyCyardY + 2);
+
+    const eu1 = new Unit(this.generateEntityId(), 'enemy', 'soldier', ec1.x, ec1.y, 100, 50, 8, 120);
+    const eu2 = new Unit(this.generateEntityId(), 'enemy', 'soldier', ec2.x, ec2.y, 100, 50, 8, 120);
     this.addUnit(eu1);
     this.addUnit(eu2);
+  }
+
+  restart() {
+    this.playerCredits = 5000;
+    this.enemyCredits = 5000;
+
+    this.playerEntities = [];
+    this.enemyEntities = [];
+    this.selectedEntities = [];
+    this.projectiles = [];
+    this.particles = [];
+    this.clickPings = [];
+    this.hoveredEntity = null;
+
+    this.grid.generateMap();
+    this.setupStartingBases();
+    
+    // Hide game-over overlay
+    document.getElementById('game-over-overlay').classList.add('hidden');
+    
+    this.state = 'playing';
+    this.currentTime = 0;
+    this.lastTime = 0;
+    this.ui.setStatusText("SYSTEM REBOOTED. CONSTRUCT STRUCTURES TO EXPAND BASE.");
   }
 
   generateEntityId() {
@@ -122,7 +178,6 @@ class Game {
       this.enemyEntities.push(unit);
     }
 
-    // Set grid tile occupied reference
     const tile = this.grid.getTileAtWorld(unit.x, unit.y);
     if (tile) {
       tile.occupiedBy = unit;
@@ -132,7 +187,6 @@ class Game {
   spawnBuilding(faction, type, gridX, gridY) {
     const b = new Building(this.generateEntityId(), faction, type, gridX, gridY, this.grid.tileSize);
     
-    // Buildings start under construction (except the starting structures)
     const isStartingBuilding = (gridX === 8 && gridY === 8) || (gridX === 8 && gridY === 12) || 
                                (gridX === this.grid.width - 11 && gridY === this.grid.height - 11) ||
                                (gridX === this.grid.width - 11 && gridY === this.grid.height - 14);
@@ -149,7 +203,6 @@ class Game {
       this.enemyEntities.push(b);
     }
 
-    // Lock all tiles in the footprint
     for (let x = gridX; x < gridX + b.gridWidth; x++) {
       for (let y = gridY; y < gridY + b.gridHeight; y++) {
         const tile = this.grid.getTile(x, y);
@@ -160,7 +213,6 @@ class Game {
       }
     }
 
-    // If Refinery completes immediately (starting), spawn Harvester
     if (isStartingBuilding && type === 'refinery') {
       b.onBuildComplete(this);
     }
@@ -169,12 +221,10 @@ class Game {
   }
 
   validateBuildingPlacement(faction, gridX, gridY, width, height) {
-    // 1. Must fit inside grid limits
     if (gridX < 0 || gridX + width > this.grid.width || gridY < 0 || gridY + height > this.grid.height) {
       return false;
     }
 
-    // 2. Footprint must be clear of obstacles, units, and resources
     for (let x = gridX; x < gridX + width; x++) {
       for (let y = gridY; y < gridY + height; y++) {
         const tile = this.grid.getTile(x, y);
@@ -184,11 +234,9 @@ class Game {
       }
     }
 
-    // 3. Must be near (within 8 tiles radius) of an existing friendly building
     const friendlyBuildings = (faction === 'player' ? this.playerEntities : this.enemyEntities)
       .filter(ent => ent.isBuilding && !ent.isDead);
 
-    // If starting out and have no buildings, allow placing anywhere
     if (friendlyBuildings.length === 0) return true;
 
     let nearBase = false;
@@ -228,10 +276,31 @@ class Game {
       x,
       y,
       radius: 2,
-      maxRadius: 18,
-      life: 0.3, // seconds
-      maxLife: 0.3
+      maxRadius: 20,
+      life: 0.35,
+      maxLife: 0.35
     });
+  }
+
+  triggerGameOver(status) {
+    this.state = status; // 'victory' or 'defeat'
+    
+    const overlay = document.getElementById('game-over-overlay');
+    const title = document.getElementById('game-over-title');
+    const desc = document.getElementById('game-over-status');
+
+    if (overlay && title && desc) {
+      overlay.classList.remove('hidden');
+      if (status === 'victory') {
+        title.innerText = "MISSION ACCOMPLISHED";
+        title.classList.remove('defeat');
+        desc.innerText = "ALL ENEMY FORCES ENIMINATED. REGION SECURED.";
+      } else {
+        title.innerText = "MISSION FAILED";
+        title.classList.add('defeat');
+        desc.innerText = "YOUR BASE AND FORCES HAVE BEEN TOTALLY DESTROYED.";
+      }
+    }
   }
 
   loop(time) {
@@ -241,10 +310,8 @@ class Game {
     let dt = (time - this.lastTime) / 1000;
     this.lastTime = time;
 
-    // Cap dt to prevent huge jumps when switching tabs
     if (dt > 0.1) dt = 0.1;
 
-    // Calculate FPS
     this.fpsFrames++;
     if (time - this.fpsLastUpdate > 1000) {
       this.fps = (this.fpsFrames * 1000) / (time - this.fpsLastUpdate);
@@ -252,6 +319,7 @@ class Game {
       this.fpsLastUpdate = time;
     }
 
+    // Skirmish updates
     this.update(dt);
     this.draw();
 
@@ -259,17 +327,36 @@ class Game {
   }
 
   update(dt) {
-    // Camera keys and edge checks
+    // 1. Camera key panning always active so player can view the map
     this.input.updateCamera(dt);
 
-    // Tiberium growth rate limiter (spread every 5 seconds)
+    if (this.state !== 'playing') {
+      // Freeze simulation loop on game over, only update UI ticks
+      this.ui.update(dt);
+      return;
+    }
+
+    // 2. Victory / Defeat trigger conditions evaluation
+    const playerAlive = this.playerEntities.length > 0;
+    const enemyAlive = this.enemyEntities.length > 0;
+
+    if (!playerAlive) {
+      this.triggerGameOver('defeat');
+      return;
+    }
+
+    if (!enemyAlive) {
+      this.triggerGameOver('victory');
+      return;
+    }
+
+    // 3. Tiberium resource spread tick
     if (this.currentTime - this.lastResourceGrowTime > 5.0) {
       this.grid.regrowResources();
       this.lastResourceGrowTime = this.currentTime;
     }
 
-    // Clear moving units grid occupancy pointers
-    // Before moving units, clear their occupancy on the grid tile
+    // 4. Temporarily unlock mobile unit grid references for dynamic moving calculations
     const clearUnitOccupancies = (entities) => {
       entities.forEach(ent => {
         if (!ent.isDead && !ent.isBuilding) {
@@ -283,16 +370,15 @@ class Game {
     clearUnitOccupancies(this.playerEntities);
     clearUnitOccupancies(this.enemyEntities);
 
-    // Update all Entities
+    // Update Entities
     this.playerEntities.forEach(ent => ent.update(dt, this));
     this.enemyEntities.forEach(ent => ent.update(dt, this));
 
-    // Re-lock grid occupancy for alive entities
+    // Relock mobile units grid reference
     const setUnitOccupancies = (entities) => {
       entities.forEach(ent => {
         if (!ent.isDead && !ent.isBuilding) {
           const tile = this.grid.getTileAtWorld(ent.x, ent.y);
-          // Only lock if the tile is clear
           if (tile && !tile.occupiedBy) {
             tile.occupiedBy = ent;
           }
@@ -302,26 +388,24 @@ class Game {
     setUnitOccupancies(this.playerEntities);
     setUnitOccupancies(this.enemyEntities);
 
-    // Update Projectiles
+    // Projectiles & Particles
     this.projectiles.forEach(p => p.update(dt, this));
     this.projectiles = this.projectiles.filter(p => !p.isDead);
 
-    // Update Particles
     this.particles.forEach(p => p.update(dt));
     this.particles = this.particles.filter(p => !p.isDead);
 
-    // Update click feedback pings
+    // Click feedback Pings
     this.clickPings.forEach(p => {
       p.life -= dt;
       p.radius = p.maxRadius * (1 - p.life / p.maxLife);
     });
     this.clickPings = this.clickPings.filter(p => p.life > 0);
 
-    // Remove dead entities and unlock their grid cells
+    // Clear dead references and spawn explosions
     const cleanDeadList = (entities) => {
       return entities.filter(ent => {
         if (ent.isDead) {
-          // If building, unlock tiles footprint
           if (ent.isBuilding) {
             for (let x = ent.gridX; x < ent.gridX + ent.gridWidth; x++) {
               for (let y = ent.gridY; y < ent.gridY + ent.gridHeight; y++) {
@@ -333,71 +417,96 @@ class Game {
               }
             }
           } else {
-            // Mobile unit: unlock current tile
             const tile = this.grid.getTileAtWorld(ent.x, ent.y);
             if (tile && tile.occupiedBy === ent) {
               tile.occupiedBy = null;
             }
           }
-          
-          // Trigger explosion particle
           this.particles.push(new ExplosionParticle(ent.x, ent.y, ent.isBuilding ? 30 : 12));
           return false;
         }
         return true;
       });
     };
-    
     this.playerEntities = cleanDeadList(this.playerEntities);
     this.enemyEntities = cleanDeadList(this.enemyEntities);
-    
-    // Filter dead elements from selection list
     this.selectedEntities = this.selectedEntities.filter(ent => !ent.isDead);
 
-    // AI Tick
+    // AI tick
     this.ai.update(dt);
 
-    // UI Updates (Credits, Power, Radar)
+    // UI Panel update
     this.ui.update(dt);
   }
 
   draw() {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-    // 1. Draw Grid / Tiberium tiles
+    // 1. Draw flat ground tiles
     this.grid.draw(this.ctx, this.camera);
 
-    // 2. Draw movement click feedback pings
+    // 2. Draw movement click feedback pings (drawn flat as ellipses)
     this.ctx.lineWidth = 1.5;
     this.clickPings.forEach(p => {
       const sx = p.x - this.camera.x;
       const sy = p.y - this.camera.y;
       this.ctx.strokeStyle = `rgba(0, 255, 102, ${p.life / p.maxLife})`;
       this.ctx.beginPath();
-      this.ctx.arc(sx, sy, p.radius, 0, Math.PI * 2);
+      this.ctx.ellipse(sx, sy, p.radius, p.radius * 0.5, 0, 0, Math.PI * 2);
       this.ctx.stroke();
     });
 
-    // 3. Draw Buildings (rendered behind units)
-    this.playerEntities.filter(e => e.isBuilding).forEach(b => b.draw(this.ctx, this.camera));
-    this.enemyEntities.filter(e => e.isBuilding).forEach(b => b.draw(this.ctx, this.camera));
+    // 3. Draw Building Placement Ghost directly in isometric projection
+    if (this.placementType) {
+      const tile = this.grid.getTileAtWorld(this.input.worldMouseX, this.input.worldMouseY);
+      if (tile) {
+        const isValid = this.validateBuildingPlacement('player', tile.x, tile.y, this.ghostWTiles, this.ghostHTiles);
+        
+        // Floor corners of ghost
+        const getScreenCoords = (gx, gy) => {
+          const coords = this.grid.getTileCoords(gx, gy);
+          return { x: coords.x - this.camera.x, y: coords.y - this.camera.y };
+        };
 
-    // 4. Draw Mobile Units
-    this.playerEntities.filter(e => !e.isBuilding).forEach(u => u.draw(this.ctx, this.camera));
-    this.enemyEntities.filter(e => !e.isBuilding).forEach(u => u.draw(this.ctx, this.camera));
+        const ptTop = getScreenCoords(tile.x, tile.y);
+        const ptRight = getScreenCoords(tile.x + this.ghostWTiles, tile.y);
+        const ptBottom = getScreenCoords(tile.x + this.ghostWTiles, tile.y + this.ghostHTiles);
+        const ptLeft = getScreenCoords(tile.x, tile.y + this.ghostHTiles);
 
-    // 5. Draw flying bullets/missiles
+        this.ctx.fillStyle = isValid ? 'rgba(0, 255, 102, 0.22)' : 'rgba(255, 30, 30, 0.22)';
+        this.ctx.strokeStyle = isValid ? 'oklch(0.8 0.22 142)' : 'oklch(0.62 0.22 25)';
+        this.ctx.lineWidth = 2;
+
+        this.ctx.beginPath();
+        this.ctx.moveTo(ptTop.x, ptTop.y);
+        this.ctx.lineTo(ptRight.x, ptRight.y);
+        this.ctx.lineTo(ptBottom.x, ptBottom.y);
+        this.ctx.lineTo(ptLeft.x, ptLeft.y);
+        this.ctx.closePath();
+        
+        this.ctx.fill();
+        this.ctx.stroke();
+      }
+    }
+
+    // 4. Collected Depth-Sorted rendering: draw units and buildings back-to-front
+    const drawables = [...this.playerEntities, ...this.enemyEntities];
+    // Sort by projected Y coordinate
+    drawables.sort((a, b) => a.y - b.y);
+
+    drawables.forEach(ent => ent.draw(this.ctx, this.camera));
+
+    // 5. Draw flying Projectiles (always on top of entities)
     this.projectiles.forEach(p => p.draw(this.ctx, this.camera));
 
-    // 6. Draw explosions/smoke particles
+    // 6. Draw impact particles
     this.particles.forEach(p => p.draw(this.ctx, this.camera));
 
-    // 7. Draw click & drag selection helper box
+    // 7. Draw screen-space drag-select box
     this.input.draw(this.ctx);
   }
 }
 
-// Particle class copy for immediate clean references
 class ExplosionParticle {
   constructor(x, y, radius) {
     this.x = x;
@@ -418,27 +527,24 @@ class ExplosionParticle {
 
     ctx.save();
     
-    // Draw fire glow ring
     ctx.shadowColor = '#ff3300';
     ctx.shadowBlur = 12 * ratio;
     
     ctx.beginPath();
-    ctx.arc(sx, sy, this.radius * (1.8 - ratio), 0, Math.PI * 2);
+    ctx.ellipse(sx, sy, this.radius * (1.8 - ratio), this.radius * 0.9 * (1.8 - ratio), 0, 0, Math.PI * 2);
     ctx.fillStyle = `rgba(255, ${Math.floor(80 + 175 * ratio)}, 0, ${ratio})`;
     ctx.fill();
 
-    // Secondary smoke ring
     ctx.shadowBlur = 0;
     ctx.fillStyle = `rgba(80, 80, 80, ${ratio * 0.5})`;
     ctx.beginPath();
-    ctx.arc(sx + 3, sy - 2, this.radius * (1.2 - ratio), 0, Math.PI * 2);
+    ctx.ellipse(sx + 3, sy - 2, this.radius * (1.2 - ratio), this.radius * 0.6 * (1.2 - ratio), 0, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
   }
 }
 
-// Initialize game on window load
 window.addEventListener('load', () => {
   window.game = new Game();
 });
