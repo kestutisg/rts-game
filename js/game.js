@@ -544,10 +544,10 @@ class Game {
     // Sort by projected Y coordinate
     drawables.sort((a, b) => a.y - b.y);
 
-    drawables.forEach(ent => ent.draw(this.ctx, this.camera));
+    drawables.forEach(ent => ent.draw(this.ctx, this.camera, this));
 
     // 5. Draw flying Projectiles (always on top of entities)
-    this.projectiles.forEach(p => p.draw(this.ctx, this.camera));
+    this.projectiles.forEach(p => p.draw(this.ctx, this.camera, this));
 
     // 6. Draw impact particles
     this.particles.forEach(p => p.draw(this.ctx, this.camera));

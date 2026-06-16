@@ -1,5 +1,12 @@
 import { Entity } from './entities.js';
 import { Unit, Harvester } from './unit.js';
+import {
+  getFactionPalette,
+  drawIsoFootprint,
+  drawExtrudedBlock,
+  drawCylinder,
+  drawSmokePuff,
+} from './render.js';
 
 export class Building extends Entity {
   constructor(id, faction, type, gridX, gridY, tileSize) {
@@ -209,10 +216,10 @@ export class Building extends Entity {
     }
   }
 
-  draw(ctx, camera) {
-    const factionColor = this.faction === 'player' ? 'oklch(0.78 0.18 195)' : 'oklch(0.62 0.22 25)';
+  draw(ctx, camera, game = null) {
+    const palette = getFactionPalette(this.faction);
+    const time = game?.currentTime ?? Date.now() / 1000;
 
-    // 1. Calculate floor corner projections
     const getScreenCoords = (gx, gy) => {
       const coords = this.getTileCoordsLocal(gx, gy);
       return { x: coords.x - camera.x, y: coords.y - camera.y };
@@ -223,164 +230,309 @@ export class Building extends Entity {
     const ptBottom = getScreenCoords(this.gridX + this.gridWidth, this.gridY + this.gridHeight);
     const ptLeft = getScreenCoords(this.gridX, this.gridY + this.gridHeight);
 
-    // 2. Draw shadow (flat black offset footprint diamond)
-    const sxOffset = 5;
-    const syOffset = 3;
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-    ctx.beginPath();
-    ctx.moveTo(ptTop.x + sxOffset, ptTop.y + syOffset);
-    ctx.lineTo(ptRight.x + sxOffset, ptRight.y + syOffset);
-    ctx.lineTo(ptBottom.x + sxOffset, ptBottom.y + syOffset);
-    ctx.lineTo(ptLeft.x + sxOffset, ptLeft.y + syOffset);
-    ctx.closePath();
-    ctx.fill();
+    // Ground shadow beneath structure
+    drawIsoFootprint(
+      ctx,
+      { x: ptTop.x + 6, y: ptTop.y + 4 },
+      { x: ptRight.x + 6, y: ptRight.y + 4 },
+      { x: ptBottom.x + 6, y: ptBottom.y + 4 },
+      { x: ptLeft.x + 6, y: ptLeft.y + 4 },
+      'rgba(0, 0, 0, 0.38)'
+    );
 
-    // 3. Extrude building vertical height
+    // Foundation pad
+    drawIsoFootprint(ctx, ptTop, ptRight, ptBottom, ptLeft, '#1a2228', '#2a343c');
+
     const h = this.height3D;
-    const ptTopRoof = { x: ptTop.x, y: ptTop.y - h };
-    const ptRightRoof = { x: ptRight.x, y: ptRight.y - h };
-    const ptBottomRoof = { x: ptBottom.x, y: ptBottom.y - h };
-    const ptLeftRoof = { x: ptLeft.x, y: ptLeft.y - h };
+    const wallColors = {
+      left: '#141a1f',
+      right: '#1e262d',
+      top: '#2a323a',
+      edge: '#3d4852',
+    };
 
-    // Left wall face
-    ctx.fillStyle = '#171c20'; // dark shadow wall
+    const roof = drawExtrudedBlock(ctx, ptTop, ptRight, ptBottom, ptLeft, h, wallColors);
+
+    // Faction trim band on front walls
+    ctx.fillStyle = palette.trim;
+    ctx.globalAlpha = 0.55;
     ctx.beginPath();
-    ctx.moveTo(ptLeft.x, ptLeft.y);
-    ctx.lineTo(ptBottom.x, ptBottom.y);
-    ctx.lineTo(ptBottomRoof.x, ptBottomRoof.y);
-    ctx.lineTo(ptLeftRoof.x, ptLeftRoof.y);
+    ctx.moveTo(ptLeft.x, ptLeft.y - 2);
+    ctx.lineTo(ptBottom.x, ptBottom.y - 2);
+    ctx.lineTo(ptBottom.x, ptBottom.y - 8);
+    ctx.lineTo(ptLeft.x, ptLeft.y - 8);
     ctx.closePath();
     ctx.fill();
-
-    // Right wall face
-    ctx.fillStyle = '#21282d'; // medium wall
     ctx.beginPath();
-    ctx.moveTo(ptBottom.x, ptBottom.y);
-    ctx.lineTo(ptRight.x, ptRight.y);
-    ctx.lineTo(ptRightRoof.x, ptRightRoof.y);
-    ctx.lineTo(ptBottomRoof.x, ptBottomRoof.y);
+    ctx.moveTo(ptBottom.x, ptBottom.y - 2);
+    ctx.lineTo(ptRight.x, ptRight.y - 2);
+    ctx.lineTo(ptRight.x, ptRight.y - 8);
+    ctx.lineTo(ptBottom.x, ptBottom.y - 8);
     ctx.closePath();
     ctx.fill();
+    ctx.globalAlpha = 1;
 
-    // Roof face (flat diamond on top of extruded walls)
-    ctx.fillStyle = '#2b333a'; // light roof
+    const rx = roof.centerX;
+    const ry = roof.centerY;
+    const roofW = roof.ptRightRoof.x - roof.ptLeftRoof.x;
+    const roofH = roof.ptBottomRoof.y - roof.ptTopRoof.y;
+
+    this.drawBuildingDetails(ctx, rx, ry, roofW, roofH, roof, palette, time);
+
+    if (this.isUnderConstruction) {
+      this.drawConstructionOverlay(ctx, ptTop, ptRight, ptBottom, ptLeft, h);
+    }
+
+    if (this.buildQueue.length > 0 && !this.isUnderConstruction) {
+      const barW = roofW * 0.55;
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(rx - barW / 2, roof.ptTopRoof.y + 6, barW, 5);
+      ctx.fillStyle = palette.primary;
+      ctx.fillRect(rx - barW / 2, roof.ptTopRoof.y + 6, barW * this.trainingProgress, 5);
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(rx - barW / 2, roof.ptTopRoof.y + 6, barW, 5);
+    }
+
+    if (this.health < this.maxHealth * 0.35 && !this.isUnderConstruction) {
+      drawSmokePuff(ctx, rx - 8, ry - h - 4, time, this.id);
+      drawSmokePuff(ctx, rx + 6, ry - h - 8, time, this.id + 0.7);
+    }
+
+    this.drawSelectionAndHP(ctx, camera, rx, ry + h * 0.3, roofW * 0.75, roofH * 1.5, game);
+  }
+
+  drawBuildingDetails(ctx, rx, ry, roofW, roofH, roof, palette, time) {
+    switch (this.type) {
+      case 'cyard':
+        this.drawCyardDetails(ctx, rx, ry, roofW, roofH, roof, palette, time);
+        break;
+      case 'power':
+        this.drawPowerDetails(ctx, rx, ry, roofW, roofH, palette, time);
+        break;
+      case 'refinery':
+        this.drawRefineryDetails(ctx, rx, ry, roofW, roofH, palette, time);
+        break;
+      case 'barracks':
+        this.drawBarracksDetails(ctx, rx, ry, roofW, roofH, palette, time);
+        break;
+    }
+  }
+
+  drawCyardDetails(ctx, rx, ry, roofW, roofH, roof, palette, time) {
+    // Command tower
+    const tx = rx - roofW * 0.15;
+    const ty = ry - roofH * 0.1;
+    ctx.fillStyle = '#37474f';
+    ctx.fillRect(tx - 8, ty - 28, 16, 28);
+    ctx.strokeStyle = '#263238';
+    ctx.strokeRect(tx - 8, ty - 28, 16, 28);
+
+    ctx.fillStyle = palette.primary;
+    ctx.fillRect(tx - 6, ty - 26, 12, 4);
+
+    // Radar dish
+    const pulse = time * 2.2;
+    ctx.strokeStyle = palette.accent;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(ptTopRoof.x, ptTopRoof.y);
-    ctx.lineTo(ptRightRoof.x, ptRightRoof.y);
-    ctx.lineTo(ptBottomRoof.x, ptBottomRoof.y);
-    ctx.lineTo(ptLeftRoof.x, ptLeftRoof.y);
-    ctx.closePath();
-    ctx.fill();
-
-    // Outline roof
-    ctx.strokeStyle = '#3a444d';
-    ctx.lineWidth = 1;
+    ctx.arc(tx, ty - 32, 10, pulse - 0.8, pulse + 0.8);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(tx, ty - 32);
+    ctx.lineTo(tx + Math.cos(pulse) * 14, ty - 32 + Math.sin(pulse) * 5);
     ctx.stroke();
 
-    // 4. Draw type-specific decorative roof decals
-    const rx = ptTopRoof.x;
-    const ry = ptTopRoof.y + (ptBottomRoof.y - ptTopRoof.y) / 2;
-    const roofW = ptRightRoof.x - ptLeftRoof.x;
-    const roofH = ptBottomRoof.y - ptTopRoof.y;
+    // Crane arm
+    ctx.strokeStyle = '#78909c';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(rx + roofW * 0.2, ry + roofH * 0.05);
+    ctx.lineTo(rx + roofW * 0.35, ry - roofH * 0.25);
+    ctx.lineTo(rx + roofW * 0.08, ry - roofH * 0.2);
+    ctx.stroke();
 
-    if (this.type === 'cyard') {
-      // Large faction generator core on roof
-      ctx.fillStyle = factionColor;
+    // Landing pad markings
+    ctx.strokeStyle = palette.trim;
+    ctx.globalAlpha = 0.45;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(rx, ry, roofW * 0.28, roofH * 0.22, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(rx - roofW * 0.15, ry);
+    ctx.lineTo(rx + roofW * 0.15, ry);
+    ctx.moveTo(rx, ry - roofH * 0.12);
+    ctx.lineTo(rx, ry + roofH * 0.12);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Blinking beacon
+    if (Math.sin(time * 6) > 0) {
+      ctx.fillStyle = '#ff5252';
       ctx.beginPath();
-      ctx.ellipse(rx, ry, roofW * 0.2, roofH * 0.2, 0, 0, Math.PI * 2);
+      ctx.arc(tx, ty - 38, 2.5, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = '#000';
-      ctx.stroke();
+    }
+  }
 
-      // Mini rotating radar dish
-      const pulse = Date.now() / 250;
-      ctx.strokeStyle = '#78909c';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(rx, ry - 4);
-      ctx.lineTo(rx + Math.cos(pulse) * 12, ry - 4 + Math.sin(pulse) * 6);
-      ctx.stroke();
+  drawPowerDetails(ctx, rx, ry, roofW, roofH, palette, time) {
+    const pulse = (Math.sin(time * 4) + 1) / 2;
 
-    } else if (this.type === 'power') {
-      // Dual glowing coils
-      const pulseRatio = (Math.sin(Date.now() / 200) + 1.0) / 2.0;
-      ctx.shadowColor = '#00ff66';
-      ctx.shadowBlur = this.isUnderConstruction ? 0 : 8 * pulseRatio;
-      ctx.fillStyle = this.isUnderConstruction ? '#1c2226' : `oklch(0.8 0.22 142 / ${0.5 + 0.5 * pulseRatio})`;
-      
-      // Left coil cylinder
-      ctx.fillRect(rx - 12, ry - 14, 6, 10);
-      ctx.strokeRect(rx - 12, ry - 14, 6, 10);
-      // Right coil cylinder
-      ctx.fillRect(rx + 6, ry - 14, 6, 10);
-      ctx.strokeRect(rx + 6, ry - 14, 6, 10);
+    // Cooling stacks
+    drawCylinder(ctx, rx - 14, ry - 2, 7, 5, 16, { side: '#455a64', top: '#607d8b', edge: '#263238' });
+    drawCylinder(ctx, rx + 14, ry + 2, 7, 5, 16, { side: '#455a64', top: '#607d8b', edge: '#263238' });
 
-      ctx.shadowBlur = 0;
-
-    } else if (this.type === 'refinery') {
-      // Large refinery tanks
-      ctx.fillStyle = '#455a64';
-      ctx.beginPath();
-      ctx.ellipse(rx - 15, ry - 4, 10, 8, 0, 0, Math.PI * 2);
-      ctx.ellipse(rx + 15, ry + 2, 8, 6, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#000';
-      ctx.stroke();
-
-      // Exhaust chimney
-      ctx.fillStyle = '#1c2226';
-      ctx.fillRect(rx - 2, ry - 14, 5, 12);
-      ctx.strokeRect(rx - 2, ry - 14, 5, 12);
-
-    } else if (this.type === 'barracks') {
-      // Faction flag banner
-      ctx.fillStyle = factionColor;
-      ctx.fillRect(rx - 16, ry - 4, 32, 3);
-      ctx.strokeStyle = '#000';
-      ctx.strokeRect(rx - 16, ry - 4, 32, 3);
+    if (!this.isUnderConstruction) {
+      drawSmokePuff(ctx, rx - 14, ry - 20, time, 1.2);
+      drawSmokePuff(ctx, rx + 14, ry - 18, time, 2.4);
     }
 
-    // 5. Draw construction grid sweep visual
-    if (this.isUnderConstruction) {
-      // Slice overlay based on progress
-      ctx.fillStyle = 'rgba(0, 255, 255, 0.15)';
-      ctx.beginPath();
-      ctx.moveTo(ptTop.x, ptTop.y - h * this.constructionProgress);
-      ctx.lineTo(ptRight.x, ptRight.y - h * this.constructionProgress);
-      ctx.lineTo(ptBottom.x, ptBottom.y - h * this.constructionProgress);
-      ctx.lineTo(ptLeft.x, ptLeft.y - h * this.constructionProgress);
-      ctx.closePath();
-      ctx.fill();
+    // Reactor core glow
+    ctx.shadowColor = '#00e676';
+    ctx.shadowBlur = this.isUnderConstruction ? 0 : 10 + pulse * 8;
+    ctx.fillStyle = this.isUnderConstruction ? '#1b5e20' : `rgba(0, 230, 118, ${0.45 + pulse * 0.45})`;
+    ctx.beginPath();
+    ctx.ellipse(rx, ry, 10, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#004d40';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
 
-      // Green scan line
-      ctx.strokeStyle = 'rgba(0, 255, 255, 0.8)';
-      ctx.lineWidth = 1;
+    // Grille lines
+    ctx.strokeStyle = '#263238';
+    ctx.lineWidth = 1;
+    for (let i = -8; i <= 8; i += 4) {
       ctx.beginPath();
-      ctx.moveTo(ptLeft.x, ptLeft.y - h * this.constructionProgress);
-      ctx.lineTo(ptRight.x, ptRight.y - h * this.constructionProgress);
+      ctx.moveTo(rx + i, ry - 5);
+      ctx.lineTo(rx + i, ry + 5);
       ctx.stroke();
+    }
+  }
 
-      // Construction progress bar overlay
-      const cy = ptTop.y + (ptBottom.y - ptTop.y) / 2 - h / 2;
-      ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      ctx.fillRect(ptTop.x - 25, cy - 4, 50, 8);
-      ctx.fillStyle = 'oklch(0.7 0.2 45)';
-      ctx.fillRect(ptTop.x - 25, cy - 4, 50 * this.constructionProgress, 8);
+  drawRefineryDetails(ctx, rx, ry, roofW, roofH, palette, time) {
+    drawCylinder(ctx, rx - 18, ry, 9, 6, 22, { side: '#546e7a', top: '#78909c', edge: '#263238' });
+    drawCylinder(ctx, rx + 16, ry + 4, 8, 5, 18, { side: '#546e7a', top: '#78909c', edge: '#263238' });
+
+    // Pipe bridge
+    ctx.strokeStyle = '#78909c';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(rx - 18, ry - 8);
+    ctx.lineTo(rx + 16, ry - 2);
+    ctx.stroke();
+
+    // Chimney
+    ctx.fillStyle = '#37474f';
+    ctx.fillRect(rx - 3, ry - 24, 7, 18);
+    ctx.strokeStyle = '#263238';
+    ctx.strokeRect(rx - 3, ry - 24, 7, 18);
+
+    if (!this.isUnderConstruction) {
+      drawSmokePuff(ctx, rx, ry - 28, time, 0.5, 0.4);
+      drawSmokePuff(ctx, rx + 3, ry - 34, time, 1.1, 0.3);
     }
 
-    // 6. Draw active training queue
-    if (this.buildQueue.length > 0 && !this.isUnderConstruction) {
-      const barW = roofW * 0.5;
-      const bx = rx - barW / 2;
-      const by = ptTopRoof.y + 4;
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(bx, by, barW, 4);
-      ctx.fillStyle = 'oklch(0.78 0.18 195)';
-      ctx.fillRect(bx, by, barW * this.trainingProgress, 4);
+    // Ore loading dock
+    ctx.fillStyle = palette.primary;
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(rx - roofW * 0.12, ry + roofH * 0.08, roofW * 0.24, 4);
+    ctx.globalAlpha = 1;
+
+    // Tiberium stain
+    ctx.fillStyle = 'rgba(0, 230, 118, 0.25)';
+    ctx.beginPath();
+    ctx.ellipse(rx + 4, ry + 6, 6, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  drawBarracksDetails(ctx, rx, ry, roofW, roofH, palette, time) {
+    // Bunker entrance
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(rx - 10, ry + 2, 20, 10);
+    ctx.strokeStyle = '#000';
+    ctx.strokeRect(rx - 10, ry + 2, 20, 10);
+
+    ctx.fillStyle = '#37474f';
+    ctx.fillRect(rx - 7, ry + 4, 14, 8);
+    ctx.strokeStyle = palette.trim;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(rx - 7, ry + 4, 14, 8);
+
+    // Window slits with interior glow
+    const glow = 0.5 + Math.sin(time * 3) * 0.15;
+    ctx.fillStyle = `rgba(255, 183, 77, ${glow})`;
+    ctx.fillRect(rx - 18, ry - 4, 5, 3);
+    ctx.fillRect(rx + 13, ry - 2, 5, 3);
+
+    // Sandbag corners
+    ctx.fillStyle = '#8d6e63';
+    for (const ox of [-roofW * 0.22, roofW * 0.18]) {
+      ctx.beginPath();
+      ctx.ellipse(rx + ox, ry + roofH * 0.12, 7, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#5d4037';
+      ctx.stroke();
     }
 
-    // 7. Render flat isometric selection ellipsis around floor coordinates
-    this.drawSelectionAndHP(ctx, camera, rx, ry + h, roofW * 0.7, roofH * 1.4);
+    // Flag pole
+    ctx.strokeStyle = '#cfd8dc';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(rx + roofW * 0.22, ry - roofH * 0.15);
+    ctx.lineTo(rx + roofW * 0.22, ry - roofH * 0.35);
+    ctx.stroke();
+
+    const wave = Math.sin(time * 5) * 2;
+    ctx.fillStyle = palette.primary;
+    ctx.beginPath();
+    ctx.moveTo(rx + roofW * 0.22, ry - roofH * 0.35);
+    ctx.lineTo(rx + roofW * 0.22 + 18 + wave, ry - roofH * 0.33);
+    ctx.lineTo(rx + roofW * 0.22 + 16 + wave, ry - roofH * 0.28);
+    ctx.lineTo(rx + roofW * 0.22, ry - roofH * 0.30);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = palette.dark;
+    ctx.stroke();
+  }
+
+  drawConstructionOverlay(ctx, ptTop, ptRight, ptBottom, ptLeft, h) {
+    const prog = this.constructionProgress;
+
+    ctx.fillStyle = 'rgba(0, 255, 255, 0.12)';
+    ctx.beginPath();
+    ctx.moveTo(ptTop.x, ptTop.y - h * prog);
+    ctx.lineTo(ptRight.x, ptRight.y - h * prog);
+    ctx.lineTo(ptBottom.x, ptBottom.y - h * prog);
+    ctx.lineTo(ptLeft.x, ptLeft.y - h * prog);
+    ctx.closePath();
+    ctx.fill();
+
+    // Scaffolding corners
+    ctx.strokeStyle = 'rgba(255, 171, 0, 0.7)';
+    ctx.lineWidth = 1.5;
+    for (const pt of [ptTop, ptRight, ptBottom, ptLeft]) {
+      ctx.beginPath();
+      ctx.moveTo(pt.x, pt.y);
+      ctx.lineTo(pt.x, pt.y - h * prog);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = 'rgba(0, 255, 255, 0.85)';
+    ctx.beginPath();
+    ctx.moveTo(ptLeft.x, ptLeft.y - h * prog);
+    ctx.lineTo(ptRight.x, ptRight.y - h * prog);
+    ctx.stroke();
+
+    const cy = ptTop.y + (ptBottom.y - ptTop.y) / 2 - h / 2;
+    const cx = (ptLeft.x + ptRight.x) / 2;
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    ctx.fillRect(cx - 28, cy - 5, 56, 10);
+    ctx.fillStyle = '#ffab00';
+    ctx.fillRect(cx - 28, cy - 5, 56 * prog, 10);
+    ctx.strokeStyle = '#000';
+    ctx.strokeRect(cx - 28, cy - 5, 56, 10);
   }
 
   getTileCoordsLocal(x, y) {

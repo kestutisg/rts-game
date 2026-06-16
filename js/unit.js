@@ -1,4 +1,5 @@
 import { Entity } from './entities.js';
+import { getFactionPalette, drawSoftShadow, getElevationLift } from './render.js';
 
 export class Unit extends Entity {
   constructor(id, faction, type, x, y, speed, maxHealth, damage = 0, attackRange = 0) {
@@ -153,91 +154,189 @@ export class Unit extends Entity {
     ));
   }
 
-  draw(ctx, camera) {
+  draw(ctx, camera, game = null) {
+    const lift = getElevationLift(game, this.x, this.y);
     const screenX = this.x - camera.x;
-    const screenY = this.y - camera.y;
+    const screenY = this.y - camera.y - lift;
+    const palette = getFactionPalette(this.faction);
+    const time = game?.currentTime ?? Date.now() / 1000;
+    const bob = this.state === 'moving' ? Math.sin(time * 14) * 1.5 : 0;
 
-    const factionColor = this.faction === 'player' ? 'oklch(0.78 0.18 195)' : 'oklch(0.62 0.22 25)';
+    drawSoftShadow(ctx, screenX, screenY + lift * 0.3, this.radius, this.radius * 0.5);
 
-    // 1. Draw flat shadow on grid floor (squeezed circle)
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-    ctx.beginPath();
-    ctx.ellipse(screenX + 2, screenY + 2, this.radius, this.radius * 0.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 2. Draw mobile unit models
     if (this.type === 'soldier' || this.type === 'rocket') {
-      // Draw infantry standing vertically (unsquashed Y to stand upright)
-      const isRocket = this.type === 'rocket';
-      
-      // Draw upright body capsule
-      ctx.fillStyle = factionColor;
-      ctx.beginPath();
-      ctx.arc(screenX, screenY - 6, 4, 0, Math.PI * 2); // head
-      ctx.fill();
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      ctx.fillStyle = isRocket ? 'oklch(0.7 0.2 45)' : '#41525c'; // rocket orange chest vs soldier gray-blue chest
-      ctx.fillRect(screenX - 3, screenY - 2, 6, 8);
-      ctx.strokeStyle = '#000';
-      ctx.strokeRect(screenX - 3, screenY - 2, 6, 8);
-
-      // Weapon line
-      ctx.strokeStyle = '#222';
-      ctx.lineWidth = 1.8;
-      ctx.beginPath();
-      ctx.moveTo(screenX, screenY + 2);
-      ctx.lineTo(screenX + Math.cos(this.angle) * 8, screenY + 2 + Math.sin(this.angle) * 4);
-      ctx.stroke();
-
+      this.drawInfantry(ctx, screenX, screenY - bob, palette, this.type === 'rocket', time);
     } else if (this.type === 'tank') {
-      // Draw 2.5D Armored Tank (chassis lies flat on ground)
-      ctx.save();
-      ctx.translate(screenX, screenY);
-      ctx.scale(1, 0.5); // Project tracks & body chassis
-      ctx.rotate(this.angle);
-
-      // Tracks
-      ctx.fillStyle = '#2b3033';
-      ctx.fillRect(-12, -9, 24, 4);
-      ctx.fillRect(-12, 5, 24, 4);
-
-      // Chassis body
-      ctx.fillStyle = factionColor;
-      ctx.fillRect(-10, -6, 20, 12);
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(-10, -6, 20, 12);
-
-      ctx.restore();
-
-      // Draw Turret dome and barrel slightly higher to give volumetric height
-      const heightOffset = -5; // draw 5px above ground level
-      ctx.save();
-      ctx.translate(screenX, screenY + heightOffset);
-      ctx.scale(1, 0.5); // Project turret
-      ctx.rotate(this.turretAngle);
-
-      // Barrel
-      ctx.fillStyle = '#9eabb5';
-      ctx.fillRect(0, -2, 16, 4);
-      ctx.strokeStyle = '#000000';
-      ctx.strokeRect(0, -2, 16, 4);
-
-      // Turret Dome
-      ctx.fillStyle = this.faction === 'player' ? 'oklch(0.68 0.15 195)' : 'oklch(0.52 0.18 25)';
-      ctx.beginPath();
-      ctx.arc(0, 0, 7, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.restore();
+      this.drawTank(ctx, screenX, screenY - bob, palette, time);
     }
 
-    // 3. Render flat selection rings
-    this.drawSelectionAndHP(ctx, camera, screenX, screenY, this.radius * 1.5, this.radius * 1.5);
+    this.drawSelectionAndHP(ctx, camera, screenX, screenY, this.radius * 1.8, this.radius * 1.2, game);
+  }
+
+  drawInfantry(ctx, sx, sy, palette, isRocket, time) {
+    const facing = this.angle;
+    const flip = Math.cos(facing) < 0 ? -1 : 1;
+
+    // Legs
+    ctx.fillStyle = '#37474f';
+    ctx.fillRect(sx - 3 * flip, sy + 1, 3, 6);
+    ctx.fillRect(sx, sy + 1, 3, 6);
+    ctx.strokeStyle = '#263238';
+    ctx.strokeRect(sx - 3 * flip, sy + 1, 3, 6);
+    ctx.strokeRect(sx, sy + 1, 3, 6);
+
+    // Torso armor
+    const chestColor = isRocket ? '#e65100' : '#455a64';
+    ctx.fillStyle = chestColor;
+    ctx.fillRect(sx - 5, sy - 4, 10, 10);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(sx - 5, sy - 4, 10, 10);
+
+    // Faction shoulder pad
+    ctx.fillStyle = palette.primary;
+    ctx.fillRect(sx + (flip > 0 ? 3 : -7), sy - 5, 4, 5);
+    ctx.strokeRect(sx + (flip > 0 ? 3 : -7), sy - 5, 4, 5);
+
+    // Helmet
+    ctx.fillStyle = palette.secondary;
+    ctx.beginPath();
+    ctx.arc(sx, sy - 9, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.stroke();
+
+    // Visor
+    ctx.fillStyle = palette.accent;
+    ctx.fillRect(sx - 3, sy - 10, 6, 2);
+
+    if (isRocket) {
+      // Rocket launcher tube
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(facing);
+      ctx.fillStyle = '#546e7a';
+      ctx.fillRect(flip * 2, -3, 16 * flip, 6);
+      ctx.strokeStyle = '#000';
+      ctx.strokeRect(flip * 2, -3, 16 * flip, 6);
+      ctx.fillStyle = '#ff6f00';
+      ctx.fillRect(flip * 16, -2, 4 * flip, 4);
+      // Backpack
+      ctx.fillStyle = '#37474f';
+      ctx.fillRect(-6 * flip, -2, 5, 8);
+      ctx.strokeRect(-6 * flip, -2, 5, 8);
+      ctx.restore();
+    } else {
+      // Rifle
+      ctx.strokeStyle = '#263238';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + Math.cos(facing) * 12, sy + Math.sin(facing) * 6);
+      ctx.stroke();
+      ctx.fillStyle = '#78909c';
+      ctx.beginPath();
+      ctx.arc(sx + Math.cos(facing) * 12, sy + Math.sin(facing) * 6, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Idle breathing
+    if (this.state === 'idle' && Math.sin(time * 2) > 0.95) {
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillRect(sx - 1, sy - 12, 2, 1);
+    }
+  }
+
+  drawTank(ctx, sx, sy, palette, time) {
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.scale(1, 0.5);
+    ctx.rotate(this.angle);
+
+    // Track wheels
+    ctx.fillStyle = '#1a1d1f';
+    for (let i = -10; i <= 8; i += 4) {
+      ctx.beginPath();
+      ctx.arc(i, -8, 2.5, 0, Math.PI * 2);
+      ctx.arc(i, 8, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Tracks
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(-14, -10, 28, 5);
+    ctx.fillRect(-14, 5, 28, 5);
+    ctx.strokeStyle = '#000';
+    ctx.strokeRect(-14, -10, 28, 5);
+    ctx.strokeRect(-14, 5, 28, 5);
+
+    // Hull with sloped front
+    ctx.fillStyle = palette.secondary;
+    ctx.beginPath();
+    ctx.moveTo(-12, -7);
+    ctx.lineTo(10, -7);
+    ctx.lineTo(12, -3);
+    ctx.lineTo(12, 3);
+    ctx.lineTo(10, 7);
+    ctx.lineTo(-12, 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Hull detail stripe
+    ctx.strokeStyle = palette.trim;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-8, 0);
+    ctx.lineTo(8, 0);
+    ctx.stroke();
+
+    ctx.restore();
+
+    // Turret (raised above hull)
+    const turretY = sy - 8;
+    ctx.save();
+    ctx.translate(sx, turretY);
+    ctx.scale(1, 0.5);
+    ctx.rotate(this.turretAngle);
+
+    // Barrel
+    const barrelGrad = ctx.createLinearGradient(0, -2, 18, 2);
+    barrelGrad.addColorStop(0, '#90a4ae');
+    barrelGrad.addColorStop(1, '#546e7a');
+    ctx.fillStyle = barrelGrad;
+    ctx.fillRect(0, -2.5, 18, 5);
+    ctx.strokeStyle = '#000';
+    ctx.strokeRect(0, -2.5, 18, 5);
+    ctx.fillStyle = '#37474f';
+    ctx.fillRect(16, -3, 3, 6);
+
+    // Turret body
+    ctx.fillStyle = palette.primary;
+    ctx.beginPath();
+    ctx.arc(0, 0, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.stroke();
+
+    // Commander cupola
+    ctx.fillStyle = palette.dark;
+    ctx.beginPath();
+    ctx.arc(-2, -1, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.restore();
+
+    // Exhaust puff when moving
+    if (this.state === 'moving' && Math.sin(time * 20) > 0.6) {
+      ctx.fillStyle = 'rgba(120, 120, 120, 0.25)';
+      ctx.beginPath();
+      ctx.arc(sx - Math.cos(this.angle) * 14, sy - Math.sin(this.angle) * 7 - 2, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 }
 
@@ -457,57 +556,109 @@ export class Harvester extends Unit {
     }
   }
 
-  draw(ctx, camera) {
+  draw(ctx, camera, game = null) {
+    const lift = getElevationLift(game, this.x, this.y);
     const screenX = this.x - camera.x;
-    const screenY = this.y - camera.y;
+    const screenY = this.y - camera.y - lift;
+    const palette = getFactionPalette(this.faction);
+    const time = game?.currentTime ?? Date.now() / 1000;
+    const bob = this.state === 'moving' ? Math.sin(time * 10) * 1.2 : 0;
+    const cargoRatio = this.cargo / this.maxCargo;
 
-    // Draw shadow
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-    ctx.beginPath();
-    ctx.ellipse(screenX + 3, screenY + 2, this.radius, this.radius * 0.5, 0, 0, Math.PI * 2);
-    ctx.fill();
+    drawSoftShadow(ctx, screenX, screenY + lift * 0.3, this.radius + 2, (this.radius + 2) * 0.5);
 
-    // Draw Harvester chassis
     ctx.save();
-    ctx.translate(screenX, screenY);
-    ctx.scale(1, 0.5); // Project flat to ground
+    ctx.translate(screenX, screenY - bob);
+    ctx.scale(1, 0.5);
     ctx.rotate(this.angle);
 
-    // Tracks
-    ctx.fillStyle = '#1c1f21';
-    ctx.fillRect(-16, -11, 32, 4);
-    ctx.fillRect(-16, 7, 32, 4);
-
-    // Cab/Cargo Chassis
-    const color = this.faction === 'player' ? 'oklch(0.85 0.15 85)' : 'oklch(0.62 0.22 25)';
-    ctx.fillStyle = color;
-    ctx.fillRect(-13, -8, 26, 16);
-    ctx.strokeStyle = '#000000';
-    ctx.strokeRect(-13, -8, 26, 16);
-
-    // Cockpit
-    ctx.fillStyle = 'rgba(0, 255, 255, 0.6)';
-    ctx.fillRect(5, -4, 5, 8);
+    // Heavy tracks
+    ctx.fillStyle = '#1a1d1f';
+    ctx.fillRect(-18, -12, 36, 5);
+    ctx.fillRect(-18, 7, 36, 5);
     ctx.strokeStyle = '#000';
-    ctx.strokeRect(5, -4, 5, 8);
+    ctx.strokeRect(-18, -12, 36, 5);
+    ctx.strokeRect(-18, 7, 36, 5);
 
-    // Cargo indicator light
-    const ratio = this.cargo / this.maxCargo;
-    ctx.fillStyle = `oklch(0.65 0.25 142 / ${ratio})`;
+    for (let i = -14; i <= 12; i += 4) {
+      ctx.fillStyle = '#37474f';
+      ctx.beginPath();
+      ctx.arc(i, -9.5, 2, 0, Math.PI * 2);
+      ctx.arc(i, 9.5, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Main chassis
+    const bodyColor = this.faction === 'player' ? '#f9a825' : palette.primary;
+    ctx.fillStyle = bodyColor;
+    ctx.fillRect(-15, -9, 30, 18);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-15, -9, 30, 18);
+
+    // Ore hopper on back
+    ctx.fillStyle = '#546e7a';
+    ctx.fillRect(-14, -6, 12, 12);
+    ctx.strokeRect(-14, -6, 12, 12);
+    ctx.fillStyle = `rgba(0, 230, 118, ${0.15 + cargoRatio * 0.55})`;
+    ctx.fillRect(-13, -5 + (1 - cargoRatio) * 10, 10, 10 * cargoRatio);
+
+    // Cab
+    ctx.fillStyle = '#455a64';
+    ctx.fillRect(2, -6, 12, 12);
+    ctx.strokeRect(2, -6, 12, 12);
+
+    // Windshield
+    ctx.fillStyle = 'rgba(79, 195, 247, 0.65)';
+    ctx.fillRect(8, -4, 5, 8);
+    ctx.strokeStyle = '#000';
+    ctx.strokeRect(8, -4, 5, 8);
+
+    // Headlights
+    ctx.fillStyle = '#fff59d';
     ctx.beginPath();
-    ctx.arc(-8, 0, 3, 0, Math.PI * 2);
+    ctx.arc(14, -2, 2, 0, Math.PI * 2);
+    ctx.arc(14, 2, 2, 0, Math.PI * 2);
     ctx.fill();
-    ctx.stroke();
 
     ctx.restore();
 
-    this.drawSelectionAndHP(ctx, camera, screenX, screenY, this.radius * 1.5, this.radius * 1.5);
-    
+    // Harvester drill arm (screen space, upright)
+    const drillSpin = time * (this.state === 'mining' ? 18 : 4);
+    ctx.save();
+    ctx.translate(screenX + Math.cos(this.angle) * 14, screenY - 6 - bob + Math.sin(this.angle) * 7);
+    ctx.rotate(drillSpin);
+
+    ctx.fillStyle = '#78909c';
+    ctx.fillRect(-2, -10, 4, 12);
+    ctx.strokeStyle = '#000';
+    ctx.strokeRect(-2, -10, 4, 12);
+
+    ctx.strokeStyle = '#cfd8dc';
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      ctx.moveTo(0, -10);
+      ctx.lineTo(Math.cos(i * Math.PI / 2) * 6, -10 + Math.sin(i * Math.PI / 2) * 6);
+      ctx.stroke();
+    }
+
+    if (this.state === 'mining') {
+      ctx.fillStyle = 'rgba(0, 230, 118, 0.4)';
+      ctx.beginPath();
+      ctx.arc(0, 4, 5 + Math.sin(time * 12) * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+
+    this.drawSelectionAndHP(ctx, camera, screenX, screenY, this.radius * 2, this.radius * 1.3, game);
+
     if (this.selected) {
-      ctx.fillStyle = '#00ff66';
-      ctx.font = '9px var(--font-mono)';
+      ctx.fillStyle = '#00e676';
+      ctx.font = '9px Share Tech Mono, monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(`ORE: ${Math.floor(this.cargo)}/${this.maxCargo}`, screenX, screenY + 16);
+      ctx.fillText(`ORE: ${Math.floor(this.cargo)}/${this.maxCargo}`, screenX, screenY + 18);
     }
   }
 }
@@ -545,26 +696,50 @@ export class Projectile {
     }
   }
 
-  draw(ctx, camera) {
+  draw(ctx, camera, game = null) {
+    const lift = getElevationLift(game, this.x, this.y);
     const screenX = this.x - camera.x;
-    const screenY = this.y - camera.y;
+    const screenY = this.y - camera.y - lift;
+    const time = game?.currentTime ?? Date.now() / 1000;
 
     if (this.type === 'bullet') {
-      ctx.fillStyle = '#ffff55';
+      ctx.shadowColor = '#ffeb3b';
+      ctx.shadowBlur = 6;
+      ctx.fillStyle = '#fff176';
       ctx.beginPath();
-      ctx.arc(screenX, screenY, 2, 0, Math.PI * 2);
+      ctx.arc(screenX, screenY, 2.5, 0, Math.PI * 2);
       ctx.fill();
+      ctx.strokeStyle = '#ff8f00';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(screenX - Math.cos(time * 20) * 5, screenY);
+      ctx.lineTo(screenX, screenY);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
     } else if (this.type === 'rocket') {
-      // 3D flying height arch (offset Y visually)
-      ctx.fillStyle = '#ffaa33';
+      const angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+      ctx.save();
+      ctx.translate(screenX, screenY);
+      ctx.rotate(angle);
+
+      ctx.shadowColor = '#ff6f00';
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = '#ff8f00';
+      ctx.fillRect(-6, -2, 10, 4);
+      ctx.fillStyle = '#ff3d00';
       ctx.beginPath();
-      ctx.arc(screenX, screenY, 4, 0, Math.PI * 2);
+      ctx.moveTo(4, 0);
+      ctx.lineTo(10, -3);
+      ctx.lineTo(10, 3);
+      ctx.closePath();
       ctx.fill();
-      
-      ctx.fillStyle = '#ff3300';
+
+      ctx.fillStyle = `rgba(255, 200, 50, ${0.45 + Math.sin(time * 30) * 0.2})`;
       ctx.beginPath();
-      ctx.arc(screenX - 2, screenY, 2, 0, Math.PI * 2);
+      ctx.arc(-8, 0, 3 + Math.sin(time * 30) * 1, 0, Math.PI * 2);
       ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.restore();
     }
   }
 }
