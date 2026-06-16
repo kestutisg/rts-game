@@ -5,6 +5,7 @@ import { Building } from './building.js';
 import { Unit, Harvester } from './unit.js';
 import { EnemyAI } from './ai.js';
 import { AudioSynthesizer } from './audio.js';
+import { DayCycle } from './daycycle.js';
 
 class Game {
   constructor() {
@@ -65,6 +66,8 @@ class Game {
     this.ui = new UIManager(this);
     this.ai = new EnemyAI(this);
     this.audio = new AudioSynthesizer();
+    this.dayCycle = new DayCycle(120);
+    this.stars = this.generateStars(120);
 
     // Initial Setup
     this.setupStartingBases();
@@ -228,7 +231,7 @@ class Game {
     for (let x = gridX; x < gridX + width; x++) {
       for (let y = gridY; y < gridY + height; y++) {
         const tile = this.grid.getTile(x, y);
-        if (!tile || !tile.walkable || tile.occupiedBy || tile.type === 'ore') {
+        if (!tile || !tile.walkable || tile.occupiedBy || tile.type === 'ore' || tile.type === 'water') {
           return false;
         }
       }
@@ -411,7 +414,7 @@ class Game {
               for (let y = ent.gridY; y < ent.gridY + ent.gridHeight; y++) {
                 const tile = this.grid.getTile(x, y);
                 if (tile && tile.occupiedBy === ent) {
-                  tile.walkable = true;
+                  tile.walkable = tile.type === 'grass' || tile.type === 'ore';
                   tile.occupiedBy = null;
                 }
               }
@@ -435,15 +438,62 @@ class Game {
     // AI tick
     this.ai.update(dt);
 
+    // Day/night cycle
+    this.dayCycle.update(dt);
+
     // UI Panel update
     this.ui.update(dt);
   }
 
-  draw() {
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+  generateStars(count) {
+    const stars = [];
+    for (let i = 0; i < count; i++) {
+      stars.push({
+        x: Math.random(),
+        y: Math.random() * 0.65,
+        size: 0.5 + Math.random() * 1.5,
+        twinkle: Math.random() * Math.PI * 2,
+      });
+    }
+    return stars;
+  }
 
-    // 1. Draw flat ground tiles
-    this.grid.draw(this.ctx, this.camera);
+  drawSky(ambient) {
+    const grad = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
+    grad.addColorStop(0, ambient.skyTop);
+    grad.addColorStop(1, ambient.skyBottom);
+    this.ctx.fillStyle = grad;
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    if (ambient.stars > 0.05) {
+      this.stars.forEach(star => {
+        const sx = star.x * this.canvas.width;
+        const sy = star.y * this.canvas.height;
+        const alpha = ambient.stars * (0.4 + 0.6 * Math.abs(Math.sin(this.currentTime * 1.5 + star.twinkle)));
+        this.ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        this.ctx.fillRect(sx, sy, star.size, star.size);
+      });
+    }
+
+    if (ambient.ambient > 0.4) {
+      const sunX = ambient.sunX * this.canvas.width;
+      const sunY = ambient.sunY * this.canvas.height;
+      const sunGrad = this.ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, 60);
+      sunGrad.addColorStop(0, `rgba(255, 240, 180, ${0.25 * ambient.ambient})`);
+      sunGrad.addColorStop(1, 'rgba(255, 200, 100, 0)');
+      this.ctx.fillStyle = sunGrad;
+      this.ctx.fillRect(sunX - 60, sunY - 60, 120, 120);
+    }
+  }
+
+  draw() {
+    const ambient = this.dayCycle.getAmbient();
+
+    // 1. Sky and celestial bodies
+    this.drawSky(ambient);
+
+    // 2. Terrain with day-cycle tinting
+    this.grid.draw(this.ctx, this.camera, this.currentTime, ambient, this.dayCycle);
 
     // 2. Draw movement click feedback pings (drawn flat as ellipses)
     this.ctx.lineWidth = 1.5;
@@ -504,6 +554,12 @@ class Game {
 
     // 7. Draw screen-space drag-select box
     this.input.draw(this.ctx);
+
+    // 8. Atmospheric overlay (dusk/night tint)
+    if (ambient.overlay > 0.01) {
+      this.ctx.fillStyle = `rgba(8, 12, 32, ${ambient.overlay})`;
+      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    }
   }
 }
 

@@ -13,6 +13,7 @@ export class UIManager {
     this.powerRatio = document.getElementById('power-ratio');
     this.powerBarFill = document.getElementById('power-bar-fill');
     this.fpsCounter = document.getElementById('fps-counter');
+    this.timePhase = document.getElementById('time-phase');
     this.statusText = document.getElementById('status-text');
     this.minimapCanvas = document.getElementById('minimap-canvas');
 
@@ -199,6 +200,10 @@ export class UIManager {
     this.creditsDisplay.innerText = `$${Math.floor(this.game.playerCredits)}`;
     this.fpsCounter.innerText = Math.round(this.game.fps);
 
+    if (this.timePhase && this.game.dayCycle) {
+      this.timePhase.innerText = this.game.dayCycle.getPhaseName();
+    }
+
     // Power Calculation
     let powerGen = 0;
     let powerDraw = 0;
@@ -311,8 +316,18 @@ export class UIManager {
     for (let x = 0; x < mapW; x++) {
       for (let y = 0; y < mapH; y++) {
         const tile = this.game.grid.tiles[x][y];
-        if (tile.type === 'rock') {
+        if (tile.type === 'water') {
+          ctx.fillStyle = tile.waterVariant === 'waterfall' ? '#2196f3' :
+                          tile.waterVariant === 'river' ? '#1565c0' : '#0d47a1';
+          ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
+        } else if (tile.elevation === 2) {
+          ctx.fillStyle = '#37474f';
+          ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
+        } else if (tile.elevation === 1) {
           ctx.fillStyle = '#263238';
+          ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
+        } else if (tile.type === 'rock') {
+          ctx.fillStyle = '#455a64';
           ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
         } else if (tile.type === 'ore') {
           ctx.fillStyle = '#00e676';
