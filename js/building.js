@@ -10,7 +10,7 @@ import {
 import { BUILDING_DEFS, UNIT_DEFS } from './tech.js';
 
 export class Building extends Entity {
-  constructor(id, faction, type, gridX, gridY, tileSize) {
+  constructor(id, faction, type, gridX, gridY, tileSize, mapHeight = 60) {
     const def = BUILDING_DEFS[type] || BUILDING_DEFS.barracks;
     const maxHealth = def.maxHealth;
     const gridWidth = def.gridWidth;
@@ -27,6 +27,7 @@ export class Building extends Entity {
     this.gridY = gridY;
     this.gridWidth = gridWidth;
     this.gridHeight = gridHeight;
+    this.mapHeight = mapHeight;
     this.isBuilding = true;
     this.height3D = buildingHeight;
     
@@ -34,12 +35,11 @@ export class Building extends Entity {
     this.powerUsage = powerUse;
     
     // Isometric metrics to pre-calculate world coordinates
-    const mapHeight = 60; // constant grid height
     const halfW = tileSize;
     const halfH = tileSize / 2;
 
     // Calculate center world coordinates for selection overlays and AI targeting
-    this.x = (gridX - gridY) * halfW + mapHeight * halfW + (gridWidth - gridHeight) * halfW / 2;
+    this.x = (gridX - gridY) * halfW + this.mapHeight * halfW + (gridWidth - gridHeight) * halfW / 2;
     this.y = (gridX + gridY) * halfH + (gridWidth + gridHeight) * halfH / 2;
     
     this.widthPx = gridWidth * tileSize * 2; // bounding size for selection ellipses
@@ -638,10 +638,9 @@ export class Building extends Entity {
   }
 
   getTileCoordsLocal(x, y) {
-    const mapHeight = 60;
     const halfW = 40; // tile width = 80, half = 40
     const halfH = 20; // tile height = 40, half = 20
-    const worldX = (x - y) * halfW + mapHeight * halfW;
+    const worldX = (x - y) * halfW + this.mapHeight * halfW;
     const worldY = (x + y) * halfH;
     return { x: worldX, y: worldY };
   }

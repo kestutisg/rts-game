@@ -36,6 +36,9 @@ export class Grid {
   }
 
   generateMap() {
+    const areaScale = (this.width * this.height) / (60 * 60);
+    const scaledCount = (base) => Math.max(base, Math.round(base * areaScale));
+
     this.tiles = [];
     for (let x = 0; x < this.width; x++) {
       this.tiles[x] = [];
@@ -44,12 +47,12 @@ export class Grid {
       }
     }
 
-    this.generateElevation();
-    this.generateLakes(4, 5, 0.55);
-    this.generateRivers(2);
+    this.generateElevation(scaledCount(7));
+    this.generateLakes(scaledCount(4), 5, 0.55);
+    this.generateRivers(scaledCount(2));
     this.markWaterfalls();
-    this.createClusters(12, 'rock', 3, 0.4);
-    this.createClusters(8, 'ore', 4, 0.65);
+    this.createClusters(scaledCount(12), 'rock', 3, 0.4);
+    this.createClusters(scaledCount(8), 'ore', 4, 0.65);
 
     for (let x = 0; x < this.width; x++) {
       for (let y = 0; y < this.height; y++) {
@@ -65,7 +68,7 @@ export class Grid {
     this.clearSpawnArea(this.width - 11, this.height - 11, 8);
   }
 
-  generateElevation() {
+  generateElevation(clusterCount = 7) {
     const noise = [];
     for (let x = 0; x < this.width; x++) {
       noise[x] = [];
@@ -89,7 +92,7 @@ export class Grid {
     }
 
     // Place distinct hill clusters
-    for (let c = 0; c < 7; c++) {
+    for (let c = 0; c < clusterCount; c++) {
       const cx = Math.floor(Math.random() * (this.width - 10)) + 5;
       const cy = Math.floor(Math.random() * (this.height - 10)) + 5;
       const radius = 4 + Math.floor(Math.random() * 4);

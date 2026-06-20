@@ -297,6 +297,45 @@ export class Unit extends Entity {
     }
   }
 
+  darkenColor(hex, amount = 0.35) {
+    if (!hex || hex[0] !== '#') return hex;
+    const value = hex.slice(1);
+    const r = parseInt(value.slice(0, 2), 16);
+    const g = parseInt(value.slice(2, 4), 16);
+    const b = parseInt(value.slice(4, 6), 16);
+    const scale = 1 - amount;
+    return `rgb(${Math.floor(r * scale)}, ${Math.floor(g * scale)}, ${Math.floor(b * scale)})`;
+  }
+
+  drawRaisedVehicleBody(ctx, points, topColor, sideColor, edgeColor = '#000', depth = 5) {
+    const lower = points.map(pt => ({ x: pt.x, y: pt.y + depth }));
+
+    ctx.fillStyle = sideColor;
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    for (let i = lower.length - 1; i >= 0; i--) {
+      ctx.lineTo(lower[i].x, lower[i].y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = edgeColor;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = topColor;
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+
   drawTank(ctx, sx, sy, palette, time) {
     ctx.save();
     ctx.translate(sx, sy);
@@ -320,20 +359,15 @@ export class Unit extends Entity {
     ctx.strokeRect(-14, -10, 28, 5);
     ctx.strokeRect(-14, 5, 28, 5);
 
-    // Hull with sloped front
-    ctx.fillStyle = palette.secondary;
-    ctx.beginPath();
-    ctx.moveTo(-12, -7);
-    ctx.lineTo(10, -7);
-    ctx.lineTo(12, -3);
-    ctx.lineTo(12, 3);
-    ctx.lineTo(10, 7);
-    ctx.lineTo(-12, 7);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 1;
-    ctx.stroke();
+    // Hull with a shaded side wall so armor reads as raised mass.
+    this.drawRaisedVehicleBody(ctx, [
+      { x: -13, y: -8 },
+      { x: 10, y: -8 },
+      { x: 14, y: -3 },
+      { x: 14, y: 3 },
+      { x: 10, y: 8 },
+      { x: -13, y: 8 },
+    ], palette.secondary, this.darkenColor(palette.dark, 0.15), '#000', 5);
 
     // Hull detail stripe
     ctx.strokeStyle = palette.trim;
@@ -402,8 +436,8 @@ export class Unit extends Entity {
     ctx.arc(8, 0, 4, 0, Math.PI * 2);
     ctx.stroke();
 
-    ctx.strokeStyle = palette.primary;
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = this.darkenColor(palette.dark, 0.1);
+    ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.moveTo(-8, 0);
     ctx.lineTo(0, -5);
@@ -412,8 +446,18 @@ export class Unit extends Entity {
     ctx.lineTo(3, -10);
     ctx.stroke();
 
+    this.drawRaisedVehicleBody(ctx, [
+      { x: -4, y: -8 },
+      { x: 5, y: -9 },
+      { x: 8, y: -5 },
+      { x: 0, y: -3 },
+      { x: -6, y: -5 },
+    ], palette.primary, this.darkenColor(palette.secondary, 0.3), '#000', 3);
+
     ctx.fillStyle = '#263238';
-    ctx.fillRect(-2, -11, 7, 5);
+    ctx.fillRect(-2, -14, 7, 5);
+    ctx.strokeStyle = '#000';
+    ctx.strokeRect(-2, -14, 7, 5);
     ctx.fillStyle = '#fff59d';
     ctx.fillRect(8, -2, 3, 4);
     ctx.restore();
@@ -441,15 +485,23 @@ export class Unit extends Entity {
       }
     }
 
-    ctx.fillStyle = palette.secondary;
-    ctx.fillRect(-12, -7, 24, 14);
-    ctx.strokeStyle = '#000';
-    ctx.strokeRect(-12, -7, 24, 14);
+    this.drawRaisedVehicleBody(ctx, [
+      { x: -13, y: -8 },
+      { x: 9, y: -8 },
+      { x: 14, y: -3 },
+      { x: 13, y: 6 },
+      { x: -10, y: 8 },
+      { x: -14, y: 3 },
+    ], palette.secondary, this.darkenColor(palette.dark, 0.05), '#000', 5);
 
-    ctx.fillStyle = '#263238';
-    ctx.fillRect(-3, -5, 8, 10);
+    this.drawRaisedVehicleBody(ctx, [
+      { x: -4, y: -7 },
+      { x: 5, y: -7 },
+      { x: 7, y: 4 },
+      { x: -4, y: 5 },
+    ], '#263238', '#111619', '#000', 4);
     ctx.fillStyle = palette.accent;
-    ctx.fillRect(4, -3, 5, 6);
+    ctx.fillRect(3, -5, 5, 7);
 
     ctx.strokeStyle = '#90a4ae';
     ctx.lineWidth = 2;
@@ -465,6 +517,15 @@ export class Unit extends Entity {
     ctx.translate(sx, sy);
     ctx.scale(1, 0.65);
     ctx.rotate(this.angle);
+
+    ctx.fillStyle = this.darkenColor(palette.dark, 0.05);
+    ctx.beginPath();
+    ctx.moveTo(16, 4);
+    ctx.lineTo(-14, 8);
+    ctx.lineTo(-18, 3);
+    ctx.lineTo(-12, 0);
+    ctx.closePath();
+    ctx.fill();
 
     ctx.fillStyle = palette.secondary;
     ctx.beginPath();
@@ -491,6 +552,13 @@ export class Unit extends Entity {
     ctx.fillStyle = 'rgba(128, 222, 234, 0.75)';
     ctx.fillRect(6, -3, 7, 6);
 
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(13, -1);
+    ctx.lineTo(-10, -3);
+    ctx.stroke();
+
     ctx.fillStyle = `rgba(255, 245, 157, ${0.45 + Math.sin(time * 20) * 0.2})`;
     ctx.beginPath();
     ctx.arc(-19, 0, 3, 0, Math.PI * 2);
@@ -505,13 +573,21 @@ export class Unit extends Entity {
     ctx.scale(1, 0.55);
     ctx.rotate(this.angle);
 
-    ctx.fillStyle = '#263238';
-    ctx.fillRect(-16, -9, 28, 18);
-    ctx.strokeStyle = '#000';
-    ctx.strokeRect(-16, -9, 28, 18);
+    this.drawRaisedVehicleBody(ctx, [
+      { x: -17, y: -10 },
+      { x: 10, y: -10 },
+      { x: 15, y: -4 },
+      { x: 15, y: 7 },
+      { x: -14, y: 9 },
+      { x: -18, y: 3 },
+    ], '#263238', '#111619', '#000', 6);
 
-    ctx.fillStyle = palette.secondary;
-    ctx.fillRect(-13, -6, 12, 12);
+    this.drawRaisedVehicleBody(ctx, [
+      { x: -14, y: -7 },
+      { x: -2, y: -7 },
+      { x: -1, y: 6 },
+      { x: -14, y: 6 },
+    ], palette.secondary, this.darkenColor(palette.dark, 0.1), '#000', 4);
     ctx.fillStyle = isBio ? '#66bb6a' : '#ff7043';
     ctx.fillRect(-2, -3, 18, 6);
     ctx.beginPath();
@@ -789,23 +865,32 @@ export class Harvester extends Unit {
 
     // Main chassis
     const bodyColor = this.faction === 'player' ? '#f9a825' : palette.primary;
-    ctx.fillStyle = bodyColor;
-    ctx.fillRect(-15, -9, 30, 18);
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(-15, -9, 30, 18);
+    this.drawRaisedVehicleBody(ctx, [
+      { x: -16, y: -10 },
+      { x: 13, y: -10 },
+      { x: 17, y: -4 },
+      { x: 15, y: 8 },
+      { x: -13, y: 10 },
+      { x: -17, y: 4 },
+    ], bodyColor, this.darkenColor(bodyColor, 0.35), '#000', 6);
 
     // Ore hopper on back
-    ctx.fillStyle = '#546e7a';
-    ctx.fillRect(-14, -6, 12, 12);
-    ctx.strokeRect(-14, -6, 12, 12);
+    this.drawRaisedVehicleBody(ctx, [
+      { x: -14, y: -7 },
+      { x: -2, y: -7 },
+      { x: -1, y: 6 },
+      { x: -14, y: 6 },
+    ], '#546e7a', '#263238', '#000', 4);
     ctx.fillStyle = `rgba(0, 230, 118, ${0.15 + cargoRatio * 0.55})`;
     ctx.fillRect(-13, -5 + (1 - cargoRatio) * 10, 10, 10 * cargoRatio);
 
     // Cab
-    ctx.fillStyle = '#455a64';
-    ctx.fillRect(2, -6, 12, 12);
-    ctx.strokeRect(2, -6, 12, 12);
+    this.drawRaisedVehicleBody(ctx, [
+      { x: 1, y: -7 },
+      { x: 14, y: -6 },
+      { x: 14, y: 6 },
+      { x: 3, y: 7 },
+    ], '#455a64', '#263238', '#000', 5);
 
     // Windshield
     ctx.fillStyle = 'rgba(79, 195, 247, 0.65)';

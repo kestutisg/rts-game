@@ -64,7 +64,7 @@ class Game {
     this.lastResourceGrowTime = 0;
 
     // Initialize systems
-    this.grid = new Grid(60, 60, 40);
+    this.grid = new Grid(120, 120, 40);
     this.input = new InputHandler(this);
     this.ui = new UIManager(this);
     this.ai = new EnemyAI(this);
@@ -236,7 +236,7 @@ class Game {
   spawnBuilding(faction, type, gridX, gridY) {
     if (!this.canUseBuilding(faction, type)) return null;
 
-    const b = new Building(this.generateEntityId(), faction, type, gridX, gridY, this.grid.tileSize);
+    const b = new Building(this.generateEntityId(), faction, type, gridX, gridY, this.grid.tileSize, this.grid.height);
     
     const isStartingBuilding = (gridX === 8 && gridY === 8) || (gridX === 8 && gridY === 12) || 
                                (gridX === this.grid.width - 11 && gridY === this.grid.height - 11) ||
