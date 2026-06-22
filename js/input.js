@@ -40,17 +40,12 @@ export class InputHandler {
     });
 
     this.canvas.addEventListener('mousemove', (e) => {
-      const rect = this.canvas.getBoundingClientRect();
-      this.mouseX = e.clientX - rect.left;
-      this.mouseY = e.clientY - rect.top;
-      
-      this.updateWorldCoordinates();
-
-      // Check hovered entity (units or buildings)
-      this.updateHoveredEntity();
+      this.updateMousePosition(e);
     });
 
     this.canvas.addEventListener('mousedown', (e) => {
+      this.updateMousePosition(e);
+
       // Music Lazy Init (browser constraint)
       if (this.game.audio && !this.game.audio.ctx) {
         this.game.audio.start();
@@ -72,6 +67,7 @@ export class InputHandler {
 
     window.addEventListener('mouseup', (e) => {
       if (e.button !== 0 || !this.isDragging) return;
+      this.updateMousePosition(e);
       this.isDragging = false;
 
       const width = Math.abs(this.mouseX - this.dragStartScreenX);
@@ -91,8 +87,21 @@ export class InputHandler {
 
     this.canvas.addEventListener('contextmenu', (e) => {
       e.preventDefault();
+      this.updateMousePosition(e);
       this.issueCommand();
     });
+  }
+
+  updateMousePosition(e) {
+    const rect = this.canvas.getBoundingClientRect();
+    const scaleX = rect.width > 0 ? this.canvas.width / rect.width : 1;
+    const scaleY = rect.height > 0 ? this.canvas.height / rect.height : 1;
+
+    this.mouseX = (e.clientX - rect.left) * scaleX;
+    this.mouseY = (e.clientY - rect.top) * scaleY;
+
+    this.updateWorldCoordinates();
+    this.updateHoveredEntity();
   }
 
   updateWorldCoordinates() {

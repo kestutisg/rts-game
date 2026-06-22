@@ -81,8 +81,9 @@ class Game {
   }
 
   resizeCanvas() {
-    this.canvas.width = window.innerWidth - 280;
-    this.canvas.height = window.innerHeight;
+    const rect = this.canvas.getBoundingClientRect();
+    this.canvas.width = Math.max(1, Math.round(rect.width));
+    this.canvas.height = Math.max(1, Math.round(rect.height));
     
     if (this.camera) {
       this.camera.width = this.canvas.width;
