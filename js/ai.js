@@ -35,7 +35,7 @@ export class EnemyAI {
       this.buildTimer -= dt * speedMultiplier;
 
       if (this.buildTimer <= 0) {
-        this.game.spawnBuilding('enemy', this.queuedBuilding, this.targetTile.x, this.targetTile.y);
+        this.game.spawnBuilding('enemy', this.queuedBuilding, this.targetTile.x, this.targetTile.y, this.game.enemyRace);
         
         this.state = 'idle';
         this.queuedBuilding = null;
@@ -117,8 +117,7 @@ export class EnemyAI {
         this.startBuildingDecision('laser', BUILDING_DEFS.laser.cost, BUILDING_DEFS.laser.duration);
         return;
       }
-
-      // D. Build extra Barracks if credit reserves are high
+      // E. Build extra Barracks if credit reserves are high
       if (this.game.enemyCredits > 2500) {
         const type = Math.random() < 0.5 ? 'power' : 'barracks';
         this.startBuildingDecision(type, BUILDING_DEFS[type].cost, BUILDING_DEFS[type].duration);

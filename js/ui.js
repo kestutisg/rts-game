@@ -5,6 +5,7 @@
  */
 
 import { BUILDING_DEFS, LEVELS, UNIT_DEFS } from './tech.js';
+import { applyRaceBuildingStats, getRace, getRaceBuildingName, getRaceUnitName } from './races.js';
 
 export class UIManager {
   constructor(game) {
@@ -17,6 +18,10 @@ export class UIManager {
     this.fpsCounter = document.getElementById('fps-counter');
     this.timePhase = document.getElementById('time-phase');
     this.techLevel = document.getElementById('tech-level');
+    this.playerRaceEl = document.getElementById('player-race');
+    this.enemyRaceEl = document.getElementById('enemy-race');
+    this.sidebarFactionTitle = document.getElementById('sidebar-faction-title');
+    this.sidebarFactionTagline = document.getElementById('sidebar-faction-tagline');
     this.levelName = document.getElementById('level-name');
     this.levelDescription = document.getElementById('level-description');
     this.upgradeLevelBtn = document.getElementById('upgrade-level');
@@ -44,6 +49,63 @@ export class UIManager {
     document.body.appendChild(this.hoverTooltip);
 
     this.initListeners();
+    this.applyRaceLabels();
+  }
+
+  applyRaceLabels() {
+    const playerRace = getRace(this.game.playerRace);
+    const enemyRace = getRace(this.game.enemyRace);
+
+    if (this.sidebarFactionTitle) {
+      this.sidebarFactionTitle.innerText = `${playerRace.name} COMMAND`;
+    }
+    if (this.sidebarFactionTagline) {
+      this.sidebarFactionTagline.innerText = playerRace.tagline;
+    }
+    if (this.playerRaceEl) {
+      this.playerRaceEl.innerText = playerRace.name;
+      this.playerRaceEl.className = `hud-value race-${playerRace.id}`;
+    }
+    if (this.enemyRaceEl) {
+      this.enemyRaceEl.innerText = enemyRace.name;
+      this.enemyRaceEl.className = `hud-value race-${enemyRace.id}`;
+    }
+
+    Object.keys(BUILDING_DEFS).forEach(type => {
+      const btn = document.getElementById(`build-${type}`);
+      if (!btn) return;
+      const nameEl = btn.querySelector('.card-name');
+      if (nameEl) nameEl.innerText = getRaceBuildingName(this.game.playerRace, type);
+      btn.title = `${getRaceBuildingName(this.game.playerRace, type)}: ${BUILDING_DEFS[type].name}`;
+
+      const powerEl = btn.querySelector('.card-power');
+      if (powerEl) {
+        const effectiveDef = applyRaceBuildingStats(this.game.playerRace, type, BUILDING_DEFS[type]);
+        const power = effectiveDef.powerProduction - effectiveDef.powerUsage;
+        powerEl.innerText = power === 0 ? '+0 MW' : `${power > 0 ? '+' : ''}${power} MW`;
+      }
+    });
+
+    Object.keys(UNIT_DEFS).forEach(type => {
+      const btn = document.getElementById(`train-${type}`);
+      if (!btn) return;
+      const nameEl = btn.querySelector('.card-name');
+      if (nameEl) nameEl.innerText = getRaceUnitName(this.game.playerRace, type);
+      btn.title = `${getRaceUnitName(this.game.playerRace, type)}: ${UNIT_DEFS[type].name}`;
+    });
+  }
+
+  updateFactionTheme(raceId) {
+    const root = document.documentElement;
+    if (raceId === 'nod') {
+      root.style.setProperty('--accent-cyan', 'oklch(0.62 0.22 25)'); // Crimson Red
+      root.style.setProperty('--accent-cyan-glow', 'oklch(0.62 0.22 25 / 0.4)');
+      root.style.setProperty('--panel-border', 'oklch(0.3 0.05 25 / 0.6)');
+    } else {
+      root.style.setProperty('--accent-cyan', 'oklch(0.78 0.18 195)'); // Cyan Blue
+      root.style.setProperty('--accent-cyan-glow', 'oklch(0.78 0.18 195 / 0.4)');
+      root.style.setProperty('--panel-border', 'oklch(0.3 0.05 200 / 0.6)');
+    }
   }
 
   initListeners() {
@@ -78,6 +140,53 @@ export class UIManager {
     if (this.upgradeLevelBtn) {
       this.upgradeLevelBtn.addEventListener('click', () => this.game.upgradePlayerLevel());
     }
+
+    // Faction startup selection cards
+    const cardGdi = document.getElementById('card-gdi');
+    const cardNod = document.getElementById('card-nod');
+    let selectedPlayerRace = 'gdi';
+
+    if (cardGdi && cardNod) {
+      cardGdi.addEventListener('click', () => {
+        cardGdi.classList.add('selected');
+        cardNod.classList.remove('selected');
+        selectedPlayerRace = 'gdi';
+        this.syncEnemyRaceOptions(selectedPlayerRace);
+      });
+
+      cardNod.addEventListener('click', () => {
+        cardNod.classList.add('selected');
+        cardGdi.classList.remove('selected');
+        selectedPlayerRace = 'nod';
+        this.syncEnemyRaceOptions(selectedPlayerRace);
+      });
+    }
+
+    // Faction launch button
+    const launchBtn = document.getElementById('launch-btn');
+    if (launchBtn) {
+      launchBtn.addEventListener('click', () => {
+        const enemySelect = document.getElementById('enemy-faction-select');
+        const selectedEnemyRace = enemySelect ? enemySelect.value : 'nod';
+        this.game.startGame(selectedPlayerRace, selectedEnemyRace);
+      });
+    }
+
+    this.syncEnemyRaceOptions(selectedPlayerRace);
+  }
+
+  syncEnemyRaceOptions(playerRace) {
+    const enemySelect = document.getElementById('enemy-faction-select');
+    if (!enemySelect) return;
+
+    [...enemySelect.options].forEach(option => {
+      option.disabled = option.value === playerRace;
+    });
+
+    if (enemySelect.value === playerRace) {
+      const opposingOption = [...enemySelect.options].find(option => !option.disabled);
+      if (opposingOption) enemySelect.value = opposingOption.value;
+    }
   }
 
   setStatusText(msg) {
@@ -87,7 +196,8 @@ export class UIManager {
   onBuildingSelected(building) {
     this.selectedBuilding = building;
     if (building) {
-      this.setStatusText(`${building.type.toUpperCase()} SELECTED. HEALTH: ${Math.floor(building.health)}/${building.maxHealth}`);
+      const name = getRaceBuildingName(building.race, building.type).toUpperCase();
+      this.setStatusText(`${name} SELECTED. HEALTH: ${Math.floor(building.health)}/${building.maxHealth}`);
     } else {
       this.setStatusText("SYSTEM ONLINE. STANDBY FOR COMMAND.");
     }
@@ -121,7 +231,7 @@ export class UIManager {
     this.sidebarCost = cost;
     this.sidebarDuration = duration;
     this.sidebarState = 'building';
-    this.setStatusText(`BUILDING ${type.toUpperCase()}...`);
+    this.setStatusText(`BUILDING ${this.getBuildingName(type)}...`);
   }
 
   enterPlacementMode(type, cost) {
@@ -146,7 +256,7 @@ export class UIManager {
     if (ghost) ghost.classList.add('hidden');
     
     document.body.style.cursor = 'crosshair';
-    this.setStatusText(`SELECT PLACEMENT COORDINATES FOR ${type.toUpperCase()}`);
+    this.setStatusText(`SELECT PLACEMENT COORDINATES FOR ${this.getBuildingName(type)}`);
   }
 
   queueUnitTraining(type) {
@@ -178,7 +288,8 @@ export class UIManager {
 
     this.game.playerCredits -= cost;
     parentBuilding.queueUnit(type);
-    this.setStatusText(`TRAINING ${type.toUpperCase()}... QUEUED: ${parentBuilding.buildQueue.length}`);
+    const unitName = getRaceUnitName(this.game.playerRace, type).toUpperCase();
+    this.setStatusText(`TRAINING ${unitName}... QUEUED: ${parentBuilding.buildQueue.length}`);
   }
 
   updateSidebarBuild(dt) {
@@ -201,7 +312,7 @@ export class UIManager {
       const btn = document.getElementById(btnId);
       if (btn) btn.classList.add('ready-to-place');
       
-      this.setStatusText(`${this.sidebarBuilding.toUpperCase()} READY FOR PLACEMENT.`);
+      this.setStatusText(`${this.getBuildingName(this.sidebarBuilding)} READY FOR PLACEMENT.`);
     }
   }
 
@@ -311,18 +422,23 @@ export class UIManager {
     
     // Only draw hovering cards for buildings
     if (ent && ent.isBuilding && !ent.isDead) {
-      const factionText = ent.faction === 'player' ? 'PLAYER' : 'ENEMY';
-      const factionClass = ent.faction === 'player' ? '' : 'enemy';
+      const race = getRace(ent.race || this.game.playerRace);
+      const factionText = ent.faction === 'player' ? race.name : getRace(ent.race || this.game.enemyRace).name;
+      const factionClass = ent.faction === 'player' ? ent.race || this.game.playerRace : ent.race || this.game.enemyRace;
       
       let queueText = 'None';
       if (ent.buildQueue.length > 0) {
-        queueText = `${ent.buildQueue[0].type.toUpperCase()} (${Math.floor(ent.trainingProgress * 100)}%)`;
+        const queuedType = ent.buildQueue[0].type;
+        const queuedName = UNIT_DEFS[queuedType]
+          ? getRaceUnitName(ent.race || (ent.faction === 'player' ? this.game.playerRace : this.game.enemyRace), queuedType)
+          : queuedType.toUpperCase();
+        queueText = `${queuedName} (${Math.floor(ent.trainingProgress * 100)}%)`;
       }
 
       let statusMsg = ent.isUnderConstruction ? `CONSTRUCTING (${Math.floor(ent.constructionProgress * 100)}%)` : 'OPERATIONAL';
 
       this.hoverTooltip.innerHTML = `
-        <div class="label-title ${factionClass}">${this.getBuildingName(ent.type)}</div>
+        <div class="label-title ${factionClass}">${this.getBuildingName(ent.type, ent.race)}</div>
         <div class="label-row"><span class="label-label">Faction:</span><span class="label-value">${factionText}</span></div>
         <div class="label-row"><span class="label-label">Health:</span><span class="label-value">${Math.floor(ent.health)}/${ent.maxHealth}</span></div>
         <div class="label-row"><span class="label-label">Status:</span><span class="label-value green">${statusMsg}</span></div>
@@ -340,8 +456,9 @@ export class UIManager {
     }
   }
 
-  getBuildingName(type) {
-    return (BUILDING_DEFS[type]?.name || 'Structure').toUpperCase();
+  getBuildingName(type, race = null) {
+    const raceId = race || this.game.playerRace;
+    return getRaceBuildingName(raceId, type).toUpperCase();
   }
 
   drawMinimap() {
@@ -400,8 +517,11 @@ export class UIManager {
       });
     };
 
-    drawDots(this.game.playerEntities, 'oklch(0.78 0.18 195)');
-    drawDots(this.game.enemyEntities, 'oklch(0.62 0.22 25)');
+    drawDots(this.game.playerEntities, getRace(this.game.playerRace).palette.minimap);
+    drawDots(
+      this.game.enemyEntities.filter(ent => !ent.isStealthed || this.game.isEntityDetected(ent, 'player')),
+      getRace(this.game.enemyRace).palette.minimap
+    );
 
     // Draw projected Camera Viewport on minimap
     const cam = this.game.camera;

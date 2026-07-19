@@ -2,6 +2,8 @@
  * Shared isometric rendering helpers for Tiberian Odyssey
  */
 
+import { getRacePalette as racePalette } from './races.js';
+
 export function getFactionPalette(faction) {
   if (faction === 'player') {
     return {
@@ -21,6 +23,20 @@ export function getFactionPalette(faction) {
     trim: '#ff5252',
     glow: 'rgba(239, 83, 80, 0.55)',
   };
+}
+
+export function getRacePalette(race) {
+  return racePalette(race);
+}
+
+/** Prefer race palette; fall back to player/enemy colors */
+export function getEntityPalette(entity, game = null) {
+  if (entity?.race) return getRacePalette(entity.race);
+  if (game) {
+    const race = entity?.faction === 'player' ? game.playerRace : game.enemyRace;
+    return getRacePalette(race);
+  }
+  return getFactionPalette(entity?.faction);
 }
 
 export function getScreenPos(worldX, worldY, camera) {

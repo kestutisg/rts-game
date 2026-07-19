@@ -3,12 +3,14 @@
  * Represents any active object on the map (Units and Buildings).
  */
 
-import { drawSelectionBrackets, drawHealthBar } from './render.js';
+import { drawSelectionBrackets, drawHealthBar, getEntityPalette } from './render.js';
+import { normalizeRaceId } from './races.js';
 
 export class Entity {
-  constructor(id, faction, health, maxHealth) {
+  constructor(id, faction, health, maxHealth, race = 'gdi') {
     this.id = id;
     this.faction = faction; // 'player' or 'enemy'
+    this.race = normalizeRaceId(race); // 'gdi' or 'nod'
     this.health = health;
     this.maxHealth = maxHealth;
     this.selected = false;
@@ -42,10 +44,8 @@ export class Entity {
     if (!this.selected && this.health === this.maxHealth) return;
 
     if (this.selected) {
-      drawSelectionBrackets(
-        ctx, screenX, screenY, width, height,
-        this.faction === 'player' ? '#4fc3f7' : '#ef5350'
-      );
+      const palette = getEntityPalette(this, game);
+      drawSelectionBrackets(ctx, screenX, screenY, width, height, palette.primary);
     }
 
     drawHealthBar(ctx, screenX, screenY, width, this.health / this.maxHealth);

@@ -2,7 +2,7 @@
 
 A browser-based real-time strategy skirmish game inspired by classic C&C-style gameplay. Built with vanilla HTML, CSS, and JavaScript (ES modules)—no build step or dependencies required.
 
-Play as the blue faction against an AI opponent on an isometric 2.5D map. Gather ore, expand your base, manage power, train an army, and destroy the enemy before they destroy you.
+Choose GDI or NOD and face an AI opponent on an isometric 2.5D map. Gather ore, expand your base, manage power, train an army, and destroy the enemy before they destroy you.
 
 ## Features
 
@@ -15,6 +15,7 @@ Play as the blue faction against an AI opponent on an isometric 2.5D map. Gather
 - **Enemy AI** — automated expansion, unit production, and periodic attack waves
 - **Radar minimap** — tactical overview in the sidebar
 - **Synth background music** — procedurally generated via the Web Audio API
+- **Faction asymmetry** — GDI fields heavy armor, railguns, sonic emitters, and orbital strikes; NOD fields stealth, fast vehicles, obelisks, and toxic weapons
 
 ## Getting Started
 
@@ -53,6 +54,11 @@ Then open [http://localhost:8080](http://localhost:8080) in a modern browser.
 4. Train combat units from the **Barracks** tab and use right-click to attack enemy forces.
 5. Watch the power bar—running low on power slows all production.
 
+### Factions
+
+- **GDI** — tougher Predator tanks, stronger Construction Yards, railgun tank fire, sonic emitter beams, and a durable power grid.
+- **NOD** — cloaked Harvesters and Attack Bikes, faster Raider vehicles, higher-output Tiberium Reactors, Obelisks of Light, and lingering toxic clouds from strategic weapons.
+
 ## Project Structure
 
 ```
@@ -68,7 +74,9 @@ rts-game/
     ├── unit.js         # Combat units and harvesters
     ├── ai.js           # Enemy skirmish AI
     ├── audio.js        # Web Audio synthesizer
-    └── entities.js     # Base entity class
+    ├── entities.js     # Base entity class
+    ├── races.js        # GDI/NOD identities, modifiers, and names
+    └── tech.js         # Shared progression and production definitions
 ```
 
 ## Tech Stack

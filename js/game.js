@@ -7,6 +7,7 @@ import { EnemyAI } from './ai.js';
 import { AudioSynthesizer } from './audio.js';
 import { DayCycle } from './daycycle.js';
 import { BUILDING_DEFS, LEVELS, UNIT_DEFS, isUnlockedAt } from './tech.js';
+import { normalizeRaceId } from './races.js';
 
 class Game {
   constructor() {
@@ -19,7 +20,8 @@ class Game {
     // Subsystems & Helpers
     this.nextEntityId = 1;
     this.currentTime = 0;
-    this.state = 'playing'; // 'playing', 'victory', 'defeat'
+    this.state = 'menu'; // 'menu', 'playing', 'victory', 'defeat'
+    this.chemicalClouds = [];
 
     // Camera
     this.camera = {
@@ -41,6 +43,10 @@ class Game {
     this.selectedEntities = [];
     this.projectiles = [];
     this.particles = [];
+    
+    // Race/Faction types
+    this.playerRace = 'gdi';
+    this.enemyRace = 'nod';
     
     // Command placement helpers
     this.placementType = null;
@@ -73,7 +79,6 @@ class Game {
     this.stars = this.generateStars(120);
 
     // Initial Setup
-    this.setupStartingBases();
     this.initHUDListeners();
 
     // Start Game Loop
@@ -114,19 +119,98 @@ class Game {
         this.restart();
       });
     }
+
+    // Change Faction button listener
+    const changeFactionBtn = document.getElementById('change-faction-btn');
+    if (changeFactionBtn) {
+      changeFactionBtn.addEventListener('click', () => {
+        document.getElementById('game-over-overlay').classList.add('hidden');
+        this.state = 'menu';
+        const selectionOverlay = document.getElementById('faction-selection-overlay');
+        if (selectionOverlay) selectionOverlay.classList.remove('hidden');
+      });
+    }
+  }
+
+  startGame(playerRace, enemyRace) {
+    this.playerRace = normalizeRaceId(playerRace);
+    this.enemyRace = normalizeRaceId(enemyRace);
+    
+    // Reset economy & levels
+    this.playerCredits = 5000;
+    this.enemyCredits = 5000;
+    this.playerLevelIndex = 0;
+    this.enemyLevelIndex = 0;
+
+    this.playerEntities = [];
+    this.enemyEntities = [];
+    this.selectedEntities = [];
+    this.projectiles = [];
+    this.particles = [];
+    this.chemicalClouds = [];
+    this.clickPings = [];
+    this.hoveredEntity = null;
+    this.placementType = null;
+    this.nextEntityId = 1;
+    this.lastResourceGrowTime = 0;
+    this.ai.lastTickTime = 0;
+    this.ai.lastAttackTime = 0;
+    this.ai.state = 'idle';
+    this.ai.buildTimer = 0;
+    this.ai.queuedBuilding = null;
+    this.ai.targetTile = null;
+    this.ui.clearSidebarBuildVisuals();
+    document.body.style.cursor = 'default';
+
+    this.grid.generateMap();
+    this.setupStartingBases();
+    
+    this.state = 'playing';
+    this.currentTime = 0;
+    this.lastTime = 0;
+    this.ui.setStatusText("MISSION COMMENCED. DEPLOY FORCES.");
+    this.ui.applyRaceLabels();
+    this.ui.updateFactionTheme(playerRace);
+    
+    const overlay = document.getElementById('faction-selection-overlay');
+    if (overlay) overlay.classList.add('hidden');
+  }
+
+  isEntityDetected(entity, detectorFaction) {
+    if (entity.faction === detectorFaction) return true;
+    if (!entity.isStealthed) return true;
+    if (entity.decloakTimer > 0) return true;
+
+    const detectors = detectorFaction === 'player' ? this.playerEntities : this.enemyEntities;
+    for (const det of detectors) {
+      if (det.isDead) continue;
+      
+      const dist = Math.hypot(det.x - entity.x, det.y - entity.y);
+      let detectionRange = 100;
+      if (det.isBuilding) {
+        detectionRange = det.type === 'cyard' || det.type === 'turret' || det.type === 'laser' ? 260 : 150;
+      } else {
+        detectionRange = det.type === 'plane' ? 220 : 80;
+      }
+      
+      if (dist <= detectionRange) {
+        return true;
+      }
+    }
+    return false;
   }
 
   setupStartingBases() {
     // Spawn player starting structures
-    this.spawnBuilding('player', 'cyard', 8, 8);
-    this.spawnBuilding('player', 'power', 8, 12);
+    this.spawnBuilding('player', 'cyard', 8, 8, this.playerRace);
+    this.spawnBuilding('player', 'power', 8, 12, this.playerRace);
     
     // Initial units (computed isometric start points)
     const c1 = this.grid.getTileCoords(12, 10);
     const c2 = this.grid.getTileCoords(13, 11);
 
-    const u1 = new Unit(this.generateEntityId(), 'player', 'motorcycle', c1.x, c1.y);
-    const u2 = new Unit(this.generateEntityId(), 'player', 'buggy', c2.x, c2.y);
+    const u1 = new Unit(this.generateEntityId(), 'player', 'motorcycle', c1.x, c1.y, null, null, 0, 0, this.playerRace);
+    const u2 = new Unit(this.generateEntityId(), 'player', 'buggy', c2.x, c2.y, null, null, 0, 0, this.playerRace);
     this.addUnit(u1);
     this.addUnit(u2);
 
@@ -138,14 +222,14 @@ class Game {
     // Spawn Enemy starting structures
     const enemyCyardX = this.grid.width - 11;
     const enemyCyardY = this.grid.height - 11;
-    this.spawnBuilding('enemy', 'cyard', enemyCyardX, enemyCyardY);
-    this.spawnBuilding('enemy', 'power', enemyCyardX, enemyCyardY - 3);
+    this.spawnBuilding('enemy', 'cyard', enemyCyardX, enemyCyardY, this.enemyRace);
+    this.spawnBuilding('enemy', 'power', enemyCyardX, enemyCyardY - 3, this.enemyRace);
 
     const ec1 = this.grid.getTileCoords(enemyCyardX - 2, enemyCyardY + 1);
     const ec2 = this.grid.getTileCoords(enemyCyardX - 2, enemyCyardY + 2);
 
-    const eu1 = new Unit(this.generateEntityId(), 'enemy', 'motorcycle', ec1.x, ec1.y);
-    const eu2 = new Unit(this.generateEntityId(), 'enemy', 'buggy', ec2.x, ec2.y);
+    const eu1 = new Unit(this.generateEntityId(), 'enemy', 'motorcycle', ec1.x, ec1.y, null, null, 0, 0, this.enemyRace);
+    const eu2 = new Unit(this.generateEntityId(), 'enemy', 'buggy', ec2.x, ec2.y, null, null, 0, 0, this.enemyRace);
     this.addUnit(eu1);
     this.addUnit(eu2);
   }
@@ -161,8 +245,20 @@ class Game {
     this.selectedEntities = [];
     this.projectiles = [];
     this.particles = [];
+    this.chemicalClouds = [];
     this.clickPings = [];
     this.hoveredEntity = null;
+    this.placementType = null;
+    this.nextEntityId = 1;
+    this.lastResourceGrowTime = 0;
+    this.ai.lastTickTime = 0;
+    this.ai.lastAttackTime = 0;
+    this.ai.state = 'idle';
+    this.ai.buildTimer = 0;
+    this.ai.queuedBuilding = null;
+    this.ai.targetTile = null;
+    this.ui.clearSidebarBuildVisuals();
+    document.body.style.cursor = 'default';
 
     this.grid.generateMap();
     this.setupStartingBases();
@@ -174,6 +270,7 @@ class Game {
     this.currentTime = 0;
     this.lastTime = 0;
     this.ui.setStatusText("SYSTEM REBOOTED. CONSTRUCT STRUCTURES TO EXPAND BASE.");
+    this.ui.applyRaceLabels();
   }
 
   getLevelIndexForFaction(faction) {
@@ -217,6 +314,10 @@ class Game {
     return true;
   }
 
+  getRaceForFaction(faction) {
+    return faction === 'player' ? this.playerRace : this.enemyRace;
+  }
+
   generateEntityId() {
     return this.nextEntityId++;
   }
@@ -234,10 +335,19 @@ class Game {
     }
   }
 
-  spawnBuilding(faction, type, gridX, gridY) {
+  spawnBuilding(faction, type, gridX, gridY, race) {
     if (!this.canUseBuilding(faction, type)) return null;
 
-    const b = new Building(this.generateEntityId(), faction, type, gridX, gridY, this.grid.tileSize, this.grid.height);
+    const b = new Building(
+      this.generateEntityId(),
+      faction,
+      type,
+      gridX,
+      gridY,
+      this.grid.tileSize,
+      this.grid.height,
+      normalizeRaceId(race || this.getRaceForFaction(faction))
+    );
     
     const isStartingBuilding = (gridX === 8 && gridY === 8) || (gridX === 8 && gridY === 12) || 
                                (gridX === this.grid.width - 11 && gridY === this.grid.height - 11) ||
@@ -350,7 +460,7 @@ class Game {
       if (status === 'victory') {
         title.innerText = "MISSION ACCOMPLISHED";
         title.classList.remove('defeat');
-        desc.innerText = "ALL ENEMY FORCES ENIMINATED. REGION SECURED.";
+        desc.innerText = "ALL ENEMY FORCES ELIMINATED. REGION SECURED.";
       } else {
         title.innerText = "MISSION FAILED";
         title.classList.add('defeat');
@@ -447,6 +557,9 @@ class Game {
     // Projectiles & Particles
     this.projectiles.forEach(p => p.update(dt, this));
     this.projectiles = this.projectiles.filter(p => !p.isDead);
+
+    this.chemicalClouds.forEach(c => c.update(dt, this));
+    this.chemicalClouds = this.chemicalClouds.filter(c => !c.isDead);
 
     this.particles.forEach(p => p.update(dt));
     this.particles = this.particles.filter(p => !p.isDead);
@@ -602,6 +715,9 @@ class Game {
     // 5. Draw flying Projectiles (always on top of entities)
     this.projectiles.forEach(p => p.draw(this.ctx, this.camera, this));
 
+    // 5.5. Draw chemical lingering clouds
+    this.chemicalClouds.forEach(c => c.draw(this.ctx, this.camera, this));
+
     // 6. Draw impact particles
     this.particles.forEach(p => p.draw(this.ctx, this.camera));
 
@@ -650,6 +766,64 @@ class ExplosionParticle {
     ctx.ellipse(sx + 3, sy - 2, this.radius * (1.2 - ratio), this.radius * 0.6 * (1.2 - ratio), 0, 0, Math.PI * 2);
     ctx.fill();
 
+    ctx.restore();
+  }
+}
+
+class ChemicalCloud {
+  constructor(x, y, radius, duration, faction) {
+    this.x = x;
+    this.y = y;
+    this.radius = radius;
+    this.duration = duration;
+    this.maxDuration = duration;
+    this.faction = faction;
+    this.isDead = false;
+  }
+  update(dt, game) {
+    this.duration -= dt;
+    if (this.duration <= 0) {
+      this.isDead = true;
+      return;
+    }
+    const targets = this.faction === 'player' ? game.enemyEntities : game.playerEntities;
+    targets.forEach(ent => {
+      if (ent.isDead || ent.isBuilding || ent.isFlying) return;
+      if (ent.race === 'nod') return; // Nod units are immune to tiberium/chemical gas
+      
+      const dist = Math.hypot(ent.x - this.x, ent.y - this.y);
+      if (dist <= this.radius) {
+        ent.takeDamage(32 * dt);
+      }
+    });
+  }
+  draw(ctx, camera, game) {
+    const screenX = this.x - camera.x;
+    const screenY = this.y - camera.y;
+    const ratio = this.duration / this.maxDuration;
+    
+    ctx.save();
+    ctx.shadowColor = '#69f0ae';
+    ctx.shadowBlur = 15 * ratio;
+    
+    const circlesCount = 5;
+    for (let i = 0; i < circlesCount; i++) {
+      const seed = i * 4.3;
+      const pulseX = Math.sin(game.currentTime * 2 + seed) * 8;
+      const pulseY = Math.cos(game.currentTime * 1.5 + seed) * 4;
+      const r = this.radius * (0.3 + 0.5 * ratio) + Math.sin(game.currentTime + seed) * 5;
+      
+      ctx.fillStyle = `rgba(46, 125, 50, ${0.15 * ratio})`;
+      ctx.beginPath();
+      ctx.ellipse(screenX + pulseX, screenY + pulseY, r, r * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.fillStyle = `rgba(105, 240, 174, ${0.08 * ratio})`;
+      ctx.beginPath();
+      ctx.ellipse(screenX - pulseX * 0.7, screenY - pulseY * 0.7, r * 0.8, r * 0.45, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
     ctx.restore();
   }
 }

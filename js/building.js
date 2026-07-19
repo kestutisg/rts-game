@@ -2,16 +2,20 @@ import { Entity } from './entities.js';
 import { Unit, Harvester, Projectile } from './unit.js';
 import {
   getFactionPalette,
+  getEntityPalette,
   drawIsoFootprint,
   drawExtrudedBlock,
   drawCylinder,
   drawSmokePuff,
 } from './render.js';
 import { BUILDING_DEFS, UNIT_DEFS } from './tech.js';
+import { applyRaceBuildingStats, normalizeRaceId } from './races.js';
 
 export class Building extends Entity {
-  constructor(id, faction, type, gridX, gridY, tileSize, mapHeight = 60) {
-    const def = BUILDING_DEFS[type] || BUILDING_DEFS.barracks;
+  constructor(id, faction, type, gridX, gridY, tileSize, mapHeight = 60, race = 'gdi') {
+    const resolvedRace = normalizeRaceId(race);
+    const baseDef = BUILDING_DEFS[type] || BUILDING_DEFS.barracks;
+    const def = applyRaceBuildingStats(resolvedRace, type, baseDef);
     const maxHealth = def.maxHealth;
     const gridWidth = def.gridWidth;
     const gridHeight = def.gridHeight;
@@ -19,7 +23,7 @@ export class Building extends Entity {
     const powerUse = def.powerUsage;
     const buildingHeight = def.height3D;
 
-    super(id, faction, maxHealth, maxHealth);
+    super(id, faction, maxHealth, maxHealth, resolvedRace);
     
     this.type = type;
     this.def = def;
@@ -103,6 +107,8 @@ export class Building extends Entity {
 
     for (const enemy of enemies) {
       if (enemy.isDead) continue;
+      // Skip stealthed units unless detected by this faction
+      if (enemy.isStealthed && !game.isEntityDetected(enemy, this.faction)) continue;
       const dist = Math.hypot(enemy.x - this.x, enemy.y - this.y);
       if (dist < minDist) {
         minDist = dist;
@@ -134,10 +140,11 @@ export class Building extends Entity {
       if (spawnTile) {
         const coords = game.grid.getTileCoords(spawnTile.x, spawnTile.y);
         const harvester = new Harvester(
-          game.generateEntityId(), 
-          this.faction, 
-          coords.x, 
-          coords.y
+          game.generateEntityId(),
+          this.faction,
+          coords.x,
+          coords.y,
+          this.race
         );
         game.addUnit(harvester);
       }
@@ -181,7 +188,7 @@ export class Building extends Entity {
       
       let unit;
       if (unitType === 'harvester') {
-        unit = new Harvester(unitId, this.faction, coords.x, coords.y);
+        unit = new Harvester(unitId, this.faction, coords.x, coords.y, this.race);
       } else {
         const def = UNIT_DEFS[unitType];
         unit = new Unit(
@@ -193,7 +200,8 @@ export class Building extends Entity {
           def?.speed,
           def?.maxHealth,
           def?.damage,
-          def?.attackRange
+          def?.attackRange,
+          this.race
         );
       }
 
@@ -214,8 +222,9 @@ export class Building extends Entity {
   }
 
   draw(ctx, camera, game = null) {
-    const palette = getFactionPalette(this.faction);
+    const palette = getEntityPalette(this, game);
     const time = game?.currentTime ?? Date.now() / 1000;
+    const isNod = this.race === 'nod';
 
     const getScreenCoords = (gx, gy) => {
       const coords = this.getTileCoordsLocal(gx, gy);
@@ -274,7 +283,7 @@ export class Building extends Entity {
     const roofW = roof.ptRightRoof.x - roof.ptLeftRoof.x;
     const roofH = roof.ptBottomRoof.y - roof.ptTopRoof.y;
 
-    this.drawBuildingDetails(ctx, rx, ry, roofW, roofH, roof, palette, time);
+    this.drawBuildingDetails(ctx, rx, ry, roofW, roofH, roof, palette, time, isNod);
 
     if (this.isUnderConstruction) {
       this.drawConstructionOverlay(ctx, ptTop, ptRight, ptBottom, ptLeft, h);
@@ -299,40 +308,71 @@ export class Building extends Entity {
     this.drawSelectionAndHP(ctx, camera, rx, ry + h * 0.3, roofW * 0.75, roofH * 1.5, game);
   }
 
-  drawBuildingDetails(ctx, rx, ry, roofW, roofH, roof, palette, time) {
+  drawBuildingDetails(ctx, rx, ry, roofW, roofH, roof, palette, time, isNod) {
     switch (this.type) {
       case 'cyard':
-        this.drawCyardDetails(ctx, rx, ry, roofW, roofH, roof, palette, time);
+        this.drawCyardDetails(ctx, rx, ry, roofW, roofH, roof, palette, time, isNod);
         break;
       case 'power':
-        this.drawPowerDetails(ctx, rx, ry, roofW, roofH, palette, time);
+        this.drawPowerDetails(ctx, rx, ry, roofW, roofH, palette, time, isNod);
         break;
       case 'refinery':
-        this.drawRefineryDetails(ctx, rx, ry, roofW, roofH, palette, time);
+        this.drawRefineryDetails(ctx, rx, ry, roofW, roofH, palette, time, isNod);
         break;
       case 'barracks':
-        this.drawBarracksDetails(ctx, rx, ry, roofW, roofH, palette, time);
+        this.drawBarracksDetails(ctx, rx, ry, roofW, roofH, palette, time, isNod);
         break;
       case 'fence':
-        this.drawFenceDetails(ctx, rx, ry, roofW, roofH, palette);
+        this.drawFenceDetails(ctx, rx, ry, roofW, roofH, palette, isNod);
         break;
       case 'gate':
-        this.drawGateDetails(ctx, rx, ry, roofW, roofH, palette, time);
+        this.drawGateDetails(ctx, rx, ry, roofW, roofH, palette, time, isNod);
         break;
       case 'turret':
-        this.drawTurretDetails(ctx, rx, ry, roofW, roofH, palette);
+        this.drawTurretDetails(ctx, rx, ry, roofW, roofH, palette, isNod);
         break;
       case 'laser':
-        this.drawLaserDetails(ctx, rx, ry, roofW, roofH, palette, time);
+        this.drawLaserDetails(ctx, rx, ry, roofW, roofH, palette, time, isNod);
         break;
       case 'explosive_tower':
-        this.drawExplosiveTowerDetails(ctx, rx, ry, roofW, roofH, palette, time);
+        this.drawExplosiveTowerDetails(ctx, rx, ry, roofW, roofH, palette, time, isNod);
         break;
     }
   }
 
-  drawCyardDetails(ctx, rx, ry, roofW, roofH, roof, palette, time) {
-    // Command tower
+  drawCyardDetails(ctx, rx, ry, roofW, roofH, roof, palette, time, isNod) {
+    if (isNod) {
+      // NOD temple spire
+      ctx.fillStyle = '#1a1a1a';
+      ctx.beginPath();
+      ctx.moveTo(rx, ry - 42);
+      ctx.lineTo(rx + 14, ry - 8);
+      ctx.lineTo(rx - 14, ry - 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = palette.primary;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.fillStyle = palette.trim;
+      ctx.beginPath();
+      ctx.moveTo(rx, ry - 46);
+      ctx.lineTo(rx + 4, ry - 36);
+      ctx.lineTo(rx - 4, ry - 36);
+      ctx.closePath();
+      ctx.fill();
+      if (Math.sin(time * 4) > 0) {
+        ctx.shadowColor = palette.glow;
+        ctx.shadowBlur = 12;
+        ctx.fillStyle = palette.accent;
+        ctx.beginPath();
+        ctx.arc(rx, ry - 44, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+      return;
+    }
+
+    // GDI command tower
     const tx = rx - roofW * 0.15;
     const ty = ry - roofH * 0.1;
     ctx.fillStyle = '#37474f';
@@ -388,10 +428,13 @@ export class Building extends Entity {
     }
   }
 
-  drawPowerDetails(ctx, rx, ry, roofW, roofH, palette, time) {
+  drawPowerDetails(ctx, rx, ry, roofW, roofH, palette, time, isNod) {
     const pulse = (Math.sin(time * 4) + 1) / 2;
+    const coreColor = isNod
+      ? `rgba(239, 83, 80, ${0.45 + pulse * 0.45})`
+      : `rgba(0, 230, 118, ${0.45 + pulse * 0.45})`;
+    const shadowColor = isNod ? '#ef5350' : '#00e676';
 
-    // Cooling stacks
     drawCylinder(ctx, rx - 14, ry - 2, 7, 5, 16, { side: '#455a64', top: '#607d8b', edge: '#263238' });
     drawCylinder(ctx, rx + 14, ry + 2, 7, 5, 16, { side: '#455a64', top: '#607d8b', edge: '#263238' });
 
@@ -400,10 +443,9 @@ export class Building extends Entity {
       drawSmokePuff(ctx, rx + 14, ry - 18, time, 2.4);
     }
 
-    // Reactor core glow
-    ctx.shadowColor = '#00e676';
+    ctx.shadowColor = shadowColor;
     ctx.shadowBlur = this.isUnderConstruction ? 0 : 10 + pulse * 8;
-    ctx.fillStyle = this.isUnderConstruction ? '#1b5e20' : `rgba(0, 230, 118, ${0.45 + pulse * 0.45})`;
+    ctx.fillStyle = this.isUnderConstruction ? '#1b5e20' : coreColor;
     ctx.beginPath();
     ctx.ellipse(rx, ry, 10, 7, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -459,8 +501,25 @@ export class Building extends Entity {
     ctx.fill();
   }
 
-  drawBarracksDetails(ctx, rx, ry, roofW, roofH, palette, time) {
-    // Bunker entrance
+  drawBarracksDetails(ctx, rx, ry, roofW, roofH, palette, time, isNod) {
+    if (isNod) {
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(rx - 14, ry - 6, 28, 14);
+      ctx.strokeStyle = palette.primary;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(rx - 14, ry - 6, 28, 14);
+      for (const ox of [-10, 0, 10]) {
+        ctx.beginPath();
+        ctx.moveTo(rx + ox, ry - 6);
+        ctx.lineTo(rx + ox, ry - 18);
+        ctx.stroke();
+      }
+      ctx.fillStyle = palette.trim;
+      ctx.fillRect(rx - 8, ry + 2, 16, 8);
+      return;
+    }
+
+    // GDI bunker entrance
     ctx.fillStyle = '#263238';
     ctx.fillRect(rx - 10, ry + 2, 20, 10);
     ctx.strokeStyle = '#000';
@@ -509,23 +568,33 @@ export class Building extends Entity {
     ctx.stroke();
   }
 
-  drawFenceDetails(ctx, rx, ry, roofW, roofH, palette) {
-    ctx.strokeStyle = '#90a4ae';
+  drawFenceDetails(ctx, rx, ry, roofW, roofH, palette, isNod) {
+    ctx.strokeStyle = isNod ? palette.primary : '#90a4ae';
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(rx - roofW * 0.3, ry);
     ctx.lineTo(rx + roofW * 0.3, ry);
     ctx.stroke();
 
-    ctx.fillStyle = palette.primary;
+    ctx.fillStyle = isNod ? '#212121' : palette.primary;
     for (const ox of [-roofW * 0.25, 0, roofW * 0.25]) {
       ctx.fillRect(rx + ox - 2, ry - 18, 4, 22);
       ctx.strokeStyle = '#000';
       ctx.strokeRect(rx + ox - 2, ry - 18, 4, 22);
+      if (isNod) {
+        ctx.fillStyle = palette.trim;
+        ctx.beginPath();
+        ctx.moveTo(rx + ox, ry - 20);
+        ctx.lineTo(rx + ox + 3, ry - 14);
+        ctx.lineTo(rx + ox - 3, ry - 14);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#212121';
+      }
     }
   }
 
-  drawGateDetails(ctx, rx, ry, roofW, roofH, palette, time) {
+  drawGateDetails(ctx, rx, ry, roofW, roofH, palette, time, isNod) {
     ctx.strokeStyle = '#78909c';
     ctx.lineWidth = 4;
     ctx.beginPath();
@@ -540,7 +609,45 @@ export class Building extends Entity {
     ctx.fillRect(rx + roofW * 0.36 - 5, ry - 20, 5, 24);
   }
 
-  drawTurretDetails(ctx, rx, ry, roofW, roofH, palette) {
+  drawTurretDetails(ctx, rx, ry, roofW, roofH, palette, isNod) {
+    if (isNod) {
+      // Obelisk of Light (Nod heavy defensive laser tower)
+      // Tall obsidian pyramid spire
+      ctx.fillStyle = '#111111';
+      ctx.beginPath();
+      ctx.moveTo(rx, ry - 42);
+      ctx.lineTo(rx + 11, ry + 4);
+      ctx.lineTo(rx - 11, ry + 4);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Red glowing border frames
+      ctx.strokeStyle = '#ef5350';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(rx, ry - 30);
+      ctx.lineTo(rx + 7, ry + 2);
+      ctx.moveTo(rx, ry - 30);
+      ctx.lineTo(rx - 7, ry + 2);
+      ctx.stroke();
+
+      // Red central crystal slit charging core
+      ctx.fillStyle = '#ff1744';
+      ctx.fillRect(rx - 2, ry - 18, 4, 15);
+
+      // Tip pulsing emitter orb
+      const pulse = 0.5 + Math.sin(Date.now() / 140) * 0.4;
+      ctx.save();
+      ctx.shadowColor = '#ff1744';
+      ctx.shadowBlur = 14 * pulse;
+      ctx.fillStyle = `rgba(255, 23, 68, ${0.45 + 0.55 * pulse})`;
+      ctx.beginPath();
+      ctx.arc(rx, ry - 42, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+
     drawCylinder(ctx, rx, ry, 15, 9, 14, { side: '#37474f', top: palette.secondary, edge: '#111' });
     ctx.save();
     ctx.translate(rx, ry - 18);
@@ -558,7 +665,37 @@ export class Building extends Entity {
     ctx.restore();
   }
 
-  drawLaserDetails(ctx, rx, ry, roofW, roofH, palette, time) {
+  drawLaserDetails(ctx, rx, ry, roofW, roofH, palette, time, isNod) {
+    if (isNod) {
+      // Nod Laser Turret Spire (basic defense spire)
+      // Base block
+      drawCylinder(ctx, rx, ry + 4, 11, 7, 9, { side: '#212121', top: '#424242', edge: '#111' });
+      // Central emitter rod
+      drawCylinder(ctx, rx, ry - 5, 5.5, 3.5, 22, { side: '#1a1a1a', top: palette.secondary, edge: '#000' });
+      
+      const pulse = 0.4 + Math.sin(time * 10) * 0.35;
+      ctx.save();
+      // Glowing laser tip
+      ctx.shadowColor = '#ff1744';
+      ctx.shadowBlur = 12 * pulse;
+      ctx.fillStyle = `rgba(255, 23, 68, ${0.5 + pulse * 0.5})`;
+      ctx.beginPath();
+      ctx.arc(rx, ry - 27, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Side supporting metallic struts
+      ctx.strokeStyle = '#2b2b2b';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(rx - 8, ry + 4);
+      ctx.lineTo(rx - 4, ry - 14);
+      ctx.moveTo(rx + 8, ry + 4);
+      ctx.lineTo(rx + 4, ry - 14);
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+
     drawCylinder(ctx, rx, ry + 5, 13, 8, 28, { side: '#263238', top: '#455a64', edge: '#111' });
     const pulse = 0.5 + Math.sin(time * 7) * 0.25;
     ctx.save();
@@ -581,9 +718,10 @@ export class Building extends Entity {
     ctx.shadowBlur = 0;
   }
 
-  drawExplosiveTowerDetails(ctx, rx, ry, roofW, roofH, palette, time) {
-    drawCylinder(ctx, rx, ry + 3, 14, 8, 24, { side: '#4e342e', top: '#6d4c41', edge: '#111' });
-    ctx.fillStyle = '#ff7043';
+  drawExplosiveTowerDetails(ctx, rx, ry, roofW, roofH, palette, time, isNod) {
+    const topColor = isNod ? palette.secondary : '#6d4c41';
+    drawCylinder(ctx, rx, ry + 3, 14, 8, 24, { side: '#4e342e', top: topColor, edge: '#111' });
+    ctx.fillStyle = isNod ? palette.primary : '#ff7043';
     ctx.beginPath();
     ctx.moveTo(rx, ry - 40);
     ctx.lineTo(rx + 13, ry - 20);

@@ -12,6 +12,8 @@ export class InputHandler {
     // Mouse positions
     this.mouseX = 0; // Screen X
     this.mouseY = 0; // Screen Y
+    this.pointerX = -1; // Viewport X, used for edge scrolling
+    this.pointerY = -1; // Viewport Y, used for edge scrolling
     this.worldMouseX = 0; // World X
     this.worldMouseY = 0; // World Y
 
@@ -37,6 +39,17 @@ export class InputHandler {
 
     window.addEventListener('keyup', (e) => {
       this.keys[e.key.toLowerCase()] = false;
+    });
+
+    // Track the pointer over the HUD and sidebar as well as the canvas. The
+    // canvas is covered by those layers, so it cannot report top/right edge motion itself.
+    window.addEventListener('mousemove', (e) => {
+      this.updateMousePosition(e, false);
+    });
+
+    window.addEventListener('mouseleave', () => {
+      this.pointerX = -1;
+      this.pointerY = -1;
     });
 
     this.canvas.addEventListener('mousemove', (e) => {
@@ -67,7 +80,7 @@ export class InputHandler {
 
     window.addEventListener('mouseup', (e) => {
       if (e.button !== 0 || !this.isDragging) return;
-      this.updateMousePosition(e);
+      this.updateMousePosition(e, false);
       this.isDragging = false;
 
       const width = Math.abs(this.mouseX - this.dragStartScreenX);
@@ -92,16 +105,18 @@ export class InputHandler {
     });
   }
 
-  updateMousePosition(e) {
+  updateMousePosition(e, updateHover = true) {
     const rect = this.canvas.getBoundingClientRect();
     const scaleX = rect.width > 0 ? this.canvas.width / rect.width : 1;
     const scaleY = rect.height > 0 ? this.canvas.height / rect.height : 1;
 
-    this.mouseX = (e.clientX - rect.left) * scaleX;
-    this.mouseY = (e.clientY - rect.top) * scaleY;
+    this.pointerX = e.clientX;
+    this.pointerY = e.clientY;
+    this.mouseX = Math.max(0, Math.min(this.canvas.width, (e.clientX - rect.left) * scaleX));
+    this.mouseY = Math.max(0, Math.min(this.canvas.height, (e.clientY - rect.top) * scaleY));
 
     this.updateWorldCoordinates();
-    this.updateHoveredEntity();
+    if (updateHover) this.updateHoveredEntity();
   }
 
   updateWorldCoordinates() {
@@ -113,8 +128,11 @@ export class InputHandler {
     // Find hovered grid tile in isometric coordinates
     const tile = this.game.grid.getTileAtWorld(this.worldMouseX, this.worldMouseY);
     if (tile && tile.occupiedBy) {
-      this.game.hoveredEntity = tile.occupiedBy;
-      return;
+      const ent = tile.occupiedBy;
+      if (!ent.isDead && (!ent.isStealthed || this.game.isEntityDetected(ent, 'player'))) {
+        this.game.hoveredEntity = ent;
+        return;
+      }
     }
 
     // Fallback: check unit radius overlaps (prioritize units)
@@ -122,6 +140,8 @@ export class InputHandler {
     const allUnits = [...this.game.playerEntities, ...this.game.enemyEntities].filter(e => !e.isBuilding && !e.isDead);
     
     for (const unit of allUnits) {
+      // Ignore stealthed enemies that are not detected by player
+      if (unit.isStealthed && !this.game.isEntityDetected(unit, 'player')) continue;
       const dist = Math.hypot(unit.x - this.worldMouseX, unit.y - this.worldMouseY);
       if (dist <= unit.radius + 6) {
         hoveredUnit = unit;
@@ -263,7 +283,7 @@ export class InputHandler {
 
     // Placement confirmed
     this.game.playerCredits -= this.game.placementCost;
-    this.game.spawnBuilding('player', this.game.placementType, tile.x, tile.y);
+    this.game.spawnBuilding('player', this.game.placementType, tile.x, tile.y, this.game.playerRace);
     
     // Clear placement
     this.game.placementType = null;
@@ -285,13 +305,22 @@ export class InputHandler {
     if (this.keys['a'] || this.keys['arrowleft']) moveX = -1;
     if (this.keys['d'] || this.keys['arrowright']) moveX = 1;
 
-    // Edge panning
+    // Edge panning uses viewport coordinates so it remains active over the HUD,
+    // while the canvas bounds prevent the sidebar from triggering right scroll.
     if (moveX === 0 && moveY === 0) {
-      if (this.mouseX >= 0 && this.mouseX < this.edgeThreshold) moveX = -1;
-      else if (this.mouseX > this.canvas.width - this.edgeThreshold && this.mouseX <= this.canvas.width) moveX = 1;
+      const rect = this.canvas.getBoundingClientRect();
+      const insideCanvasX = this.pointerX >= rect.left && this.pointerX < rect.right;
+      const insideCanvasY = this.pointerY >= rect.top && this.pointerY < rect.bottom;
 
-      if (this.mouseY >= 0 && this.mouseY < this.edgeThreshold) moveY = -1;
-      else if (this.mouseY > this.canvas.height - this.edgeThreshold && this.mouseY <= this.canvas.height) moveY = 1;
+      if (insideCanvasX) {
+        if (this.pointerX < rect.left + this.edgeThreshold) moveX = -1;
+        else if (this.pointerX >= rect.right - this.edgeThreshold) moveX = 1;
+      }
+
+      if (insideCanvasY) {
+        if (this.pointerY < rect.top + this.edgeThreshold) moveY = -1;
+        else if (this.pointerY >= rect.bottom - this.edgeThreshold) moveY = 1;
+      }
     }
 
     if (moveX !== 0 || moveY !== 0) {

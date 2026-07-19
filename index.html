@@ -35,6 +35,14 @@
         <span class="hud-label">TIME</span>
         <span class="hud-value" id="time-phase">DAY</span>
       </div>
+      <div class="hud-item" id="race-display">
+        <span class="hud-label">FACTION</span>
+        <span class="hud-value race-gdi" id="player-race">GDI</span>
+      </div>
+      <div class="hud-item" id="enemy-race-display">
+        <span class="hud-label">ENEMY</span>
+        <span class="hud-value race-nod" id="enemy-race">NOD</span>
+      </div>
       <div class="hud-item" id="level-display">
         <span class="hud-label">LEVEL</span>
         <span class="hud-value" id="tech-level">BASIC</span>
@@ -48,7 +56,8 @@
     <!-- Sidebar UI for Base Control -->
     <aside id="sidebar">
       <div class="sidebar-header">
-        <h2>TACTICAL OVERVIEW</h2>
+        <h2 id="sidebar-faction-title">GDI COMMAND</h2>
+        <p id="sidebar-faction-tagline" class="faction-tagline">Steel, discipline, and ion firepower</p>
       </div>
 
       <!-- Mini-map Panel -->
@@ -95,7 +104,7 @@
             <span class="card-power">-40 MW</span>
             <div class="build-progress" id="progress-refinery"></div>
           </button>
-          <button class="build-card" id="build-barracks" title="Barracks: Trains infantry units">
+          <button class="build-card" id="build-barracks" title="Barracks: Trains vehicles and aircraft">
             <span class="card-name">Motor Pool</span>
             <span class="card-cost">$500</span>
             <span class="card-power">-20 MW</span>
@@ -187,7 +196,73 @@
       <div class="game-over-box">
         <h1 id="game-over-title">MISSION ACCOMPLISHED</h1>
         <p id="game-over-status">ALL ENEMY FORCES ELIMINATED.</p>
-        <button id="restart-btn" class="overlay-btn">RESTART SKIRMISH</button>
+        <div class="game-over-buttons">
+          <button id="restart-btn" class="overlay-btn">RESTART MISSION</button>
+          <button id="change-faction-btn" class="overlay-btn">CHANGE FACTIONS</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Faction Selection Screen Overlay -->
+    <div id="faction-selection-overlay">
+      <div class="faction-selection-box">
+        <h1 class="selection-title">TIBERIAN ODYSSEY</h1>
+        <p class="selection-subtitle">SELECT YOUR FACTION</p>
+        
+        <div class="faction-cards-container">
+          <!-- GDI Card -->
+          <div class="faction-card selected" id="card-gdi" data-faction="gdi">
+            <div class="faction-card-glow"></div>
+            <div class="emblem-wrapper">
+              <svg class="faction-emblem" viewBox="0 0 100 100">
+                <path d="M55 10 L85 25 L85 45 L70 50 L85 62 L50 90 L15 62 L30 50 L15 45 L15 25 Z" fill="currentColor"/>
+                <path d="M50 22 L72 33 L62 55 L50 46 L38 55 L28 33 Z" fill="#0d47a1"/>
+              </svg>
+            </div>
+            <h2 class="faction-card-title gdi-text">GDI</h2>
+            <p class="faction-card-fullname">Global Defense Initiative</p>
+            <p class="faction-card-desc">Heavy armor, supreme firepower, and sound emitter technology. Built on industrial strength.</p>
+            <ul class="faction-features">
+              <li><strong>HEAVY ARMOR</strong> +20% Predator tank HP</li>
+              <li><strong>RAILGUNS</strong> Instant line-piercing shots</li>
+              <li><strong>SONIC EMITTERS</strong> Area-penetrating beams</li>
+              <li><strong>ION STRIKE</strong> Orbital superweapon impact</li>
+            </ul>
+          </div>
+          
+          <!-- NOD Card -->
+          <div class="faction-card" id="card-nod" data-faction="nod">
+            <div class="faction-card-glow"></div>
+            <div class="emblem-wrapper">
+              <svg class="faction-emblem" viewBox="0 0 100 100">
+                <path d="M50 15 C60 15 80 25 80 42 C80 60 60 75 50 88 C40 75 20 60 20 42 C20 25 40 15 50 15 Z" fill="currentColor"/>
+                <path d="M50 25 C55 30 68 40 68 49 C68 58 55 68 50 74 C45 68 32 58 32 49 C32 40 45 30 50 25 Z" fill="#4a0000"/>
+                <path d="M50 20 L56 31 L44 31 Z" fill="#ff5252"/>
+              </svg>
+            </div>
+            <h2 class="faction-card-title nod-text">NOD</h2>
+            <p class="faction-card-fullname">Brotherhood of Nod</p>
+            <p class="faction-card-desc">Stealth, speed, and chemical warfare. Harnesses toxic Tiberium elements to outmaneuver GDI.</p>
+            <ul class="faction-features">
+              <li><strong>STEALTH FIELD</strong> Harvesters and bikes cloak</li>
+              <li><strong>FAST STRIKES</strong> +15% bike, +10% buggy speed</li>
+              <li><strong>OBELISK</strong> High-power charge laser defense</li>
+              <li><strong>NUCLEAR MISSILE</strong> Leaves a toxic tiberium cloud</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="matchup-selection">
+          <div class="matchup-option">
+            <label for="enemy-faction-select">OPPOSING ENEMY FACTION:</label>
+            <select id="enemy-faction-select" class="theme-select">
+              <option value="nod">NOD (Brotherhood of Nod)</option>
+              <option value="gdi">GDI (Global Defense Initiative)</option>
+            </select>
+          </div>
+        </div>
+
+        <button id="launch-btn" class="launch-btn">LAUNCH MISSION</button>
       </div>
     </div>
   </div>
