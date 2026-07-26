@@ -7,6 +7,10 @@ import {
   drawExtrudedBlock,
   drawCylinder,
   drawSmokePuff,
+  drawHazardStripes,
+  drawTiberiumCrystal,
+  drawElectricArc,
+  drawRadarDish,
 } from './render.js';
 import { BUILDING_DEFS, UNIT_DEFS } from './tech.js';
 import { applyRaceBuildingStats, normalizeRaceId } from './races.js';
@@ -342,324 +346,620 @@ export class Building extends Entity {
 
   drawCyardDetails(ctx, rx, ry, roofW, roofH, roof, palette, time, isNod) {
     if (isNod) {
-      // NOD temple spire
-      ctx.fillStyle = '#1a1a1a';
+      // Nod Construction Yard / Temple HQ
+      // Base dark obsidian pyramid module
+      ctx.fillStyle = '#141414';
       ctx.beginPath();
-      ctx.moveTo(rx, ry - 42);
-      ctx.lineTo(rx + 14, ry - 8);
-      ctx.lineTo(rx - 14, ry - 8);
+      ctx.moveTo(rx, ry - 54);
+      ctx.lineTo(rx + roofW * 0.38, ry + roofH * 0.1);
+      ctx.lineTo(rx - roofW * 0.38, ry + roofH * 0.1);
       ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = palette.primary;
-      ctx.lineWidth = 1.5;
+
+      // Red glowing armor seam cuts
+      ctx.strokeStyle = '#ef5350';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(rx, ry - 54);
+      ctx.lineTo(rx, ry + roofH * 0.1);
+      ctx.moveTo(rx - roofW * 0.18, ry - 22);
+      ctx.lineTo(rx + roofW * 0.18, ry - 22);
       ctx.stroke();
-      ctx.fillStyle = palette.trim;
+
+      // Top Obelisk Spire & Pulsing Orb
+      const pulse = 0.5 + Math.sin(time * 5) * 0.4;
+      ctx.save();
+      ctx.shadowColor = '#ff1744';
+      ctx.shadowBlur = 16 * pulse;
+      ctx.fillStyle = `rgba(255, 23, 68, ${0.6 + 0.4 * pulse})`;
       ctx.beginPath();
-      ctx.moveTo(rx, ry - 46);
-      ctx.lineTo(rx + 4, ry - 36);
-      ctx.lineTo(rx - 4, ry - 36);
+      ctx.arc(rx, ry - 54, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Nod Scorpion Insignia on facade
+      ctx.fillStyle = palette.primary;
+      ctx.beginPath();
+      ctx.moveTo(rx, ry - 14);
+      ctx.lineTo(rx + 6, ry - 2);
+      ctx.lineTo(rx + 2, ry + 2);
+      ctx.lineTo(rx - 2, ry + 2);
+      ctx.lineTo(rx - 6, ry - 2);
       ctx.closePath();
       ctx.fill();
-      if (Math.sin(time * 4) > 0) {
-        ctx.shadowColor = palette.glow;
-        ctx.shadowBlur = 12;
-        ctx.fillStyle = palette.accent;
-        ctx.beginPath();
-        ctx.arc(rx, ry - 44, 3, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
+
+      // Holographic scanning grid projected on pad
+      const gridScan = (time * 1.5) % 1;
+      ctx.strokeStyle = 'rgba(255, 23, 68, 0.4)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(rx, ry + roofH * 0.15, roofW * 0.32, roofH * 0.18, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255, 23, 68, ${0.7 * (1 - gridScan)})`;
+      ctx.beginPath();
+      ctx.ellipse(rx, ry + roofH * 0.15, roofW * 0.32 * gridScan, roofH * 0.18 * gridScan, 0, 0, Math.PI * 2);
+      ctx.stroke();
+
+      return;
+    }
+
+    // GDI Construction Yard
+    // Front foundation hazard stripes
+    if (roof.ptLeftRoof && roof.ptBottomRoof) {
+      drawHazardStripes(ctx, roof.ptLeftRoof, roof.ptBottomRoof, 3, 5, palette.accent, '#1a1a1a');
+    }
+
+    // Multi-tier Command Tower on Left
+    const tx = rx - roofW * 0.2;
+    const ty = ry - roofH * 0.1;
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(tx - 10, ty - 32, 20, 32);
+    ctx.strokeStyle = '#102027';
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(tx - 10, ty - 32, 20, 32);
+
+    // Command Tower Illuminated Glass Windows
+    const windowGlow = 0.7 + Math.sin(time * 3) * 0.2;
+    ctx.fillStyle = `rgba(79, 195, 247, ${windowGlow})`;
+    ctx.fillRect(tx - 8, ty - 28, 16, 5);
+    ctx.fillRect(tx - 8, ty - 20, 16, 4);
+
+    // Rotating Radar Dish Array on top of Command Tower
+    drawRadarDish(ctx, tx, ty - 36, 11, time, palette.primary);
+
+    // Blinking red beacon light
+    if (Math.sin(time * 7) > 0) {
+      ctx.fillStyle = '#ff1744';
+      ctx.beginPath();
+      ctx.arc(tx + 8, ty - 34, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Heavy Industrial Crane Arm on Right
+    const cx = rx + roofW * 0.18;
+    const cy = ry + roofH * 0.05;
+    const craneTipX = rx + roofW * 0.35 + Math.sin(time * 0.8) * 4;
+    const craneTipY = ry - roofH * 0.32;
+
+    ctx.strokeStyle = '#607d8b';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(craneTipX, craneTipY);
+    ctx.stroke();
+
+    // Crane lattice truss lines
+    ctx.strokeStyle = '#37474f';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 8);
+    ctx.lineTo(craneTipX - 5, craneTipY + 8);
+    ctx.stroke();
+
+    // Crane Cable & Hook
+    ctx.strokeStyle = '#cfd8dc';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(craneTipX, craneTipY);
+    ctx.lineTo(craneTipX, craneTipY + 18);
+    ctx.stroke();
+
+    // Hook payload
+    ctx.fillStyle = palette.accent;
+    ctx.fillRect(craneTipX - 3, craneTipY + 18, 6, 4);
+
+    // Animated Welding Sparks at tip
+    if (Math.sin(time * 18) > 0.3) {
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = palette.accent;
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(craneTipX + Math.sin(time * 25) * 3, craneTipY + 22 + Math.cos(time * 25) * 2, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // Roof Helipad / Drop Zone Markings
+    const hx = rx + roofW * 0.08;
+    const hy = ry + roofH * 0.02;
+    ctx.strokeStyle = palette.trim;
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.ellipse(hx, hy, roofW * 0.2, roofH * 0.18, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // "H" Marking
+    ctx.fillStyle = palette.trim;
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('H', hx, hy);
+    ctx.globalAlpha = 1.0;
+  }
+
+  drawPowerDetails(ctx, rx, ry, roofW, roofH, palette, time, isNod) {
+    if (isNod) {
+      // Nod Tiberium Reactor
+      // Base metallic housing
+      drawCylinder(ctx, rx, ry + 4, 18, 10, 16, { side: '#1a1a1a', top: '#2c2c2c', edge: '#000' });
+
+      // Translucent Glowing Tiberium Containment Core
+      const pulse = (Math.sin(time * 4) + 1) / 2;
+      const coreColor = `rgba(0, 230, 118, ${0.6 + pulse * 0.35})`;
+
+      ctx.save();
+      ctx.shadowColor = '#00e676';
+      ctx.shadowBlur = this.isUnderConstruction ? 0 : 16 + pulse * 10;
+      ctx.fillStyle = coreColor;
+      ctx.beginPath();
+      ctx.ellipse(rx, ry - 8, 11, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Tiberium Crystal inside core
+      if (!this.isUnderConstruction) {
+        drawTiberiumCrystal(ctx, rx, ry - 10, 7, '#00e676');
+      }
+      ctx.restore();
+
+      // Glowing Liquid Conduits / Pipes wrapping around
+      ctx.strokeStyle = '#00e676';
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.7;
+      ctx.beginPath();
+      ctx.arc(rx - 10, ry, 6, 0, Math.PI);
+      ctx.arc(rx + 10, ry, 6, 0, Math.PI);
+      ctx.stroke();
+      ctx.globalAlpha = 1.0;
+
+      // Exhaust heat vent grilles with orange thermal glow
+      ctx.fillStyle = '#ff6d00';
+      ctx.fillRect(rx - 6, ry + 2, 12, 3);
+      return;
+    }
+
+    // GDI Advanced Power Plant
+    // Twin Heavy Cooling Towers / Turbines
+    drawCylinder(ctx, rx - 16, ry, 9, 6, 22, { side: '#37474f', top: '#546e7a', edge: '#102027' });
+    drawCylinder(ctx, rx + 16, ry + 3, 9, 6, 22, { side: '#37474f', top: '#546e7a', edge: '#102027' });
+
+    // Spinning turbine fan blades inside top grilles
+    const fanAngle = time * 8;
+    for (const cx of [rx - 16, rx + 16]) {
+      const cy = cx < rx ? ry - 22 : ry - 19;
+      ctx.strokeStyle = '#263238';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx - Math.cos(fanAngle) * 5, cy - Math.sin(fanAngle) * 3);
+      ctx.lineTo(cx + Math.cos(fanAngle) * 5, cy + Math.sin(fanAngle) * 3);
+      ctx.stroke();
+    }
+
+    // Central High-Voltage Generator Housing
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(rx - 10, ry - 12, 20, 16);
+    ctx.strokeStyle = '#102027';
+    ctx.strokeRect(rx - 10, ry - 12, 20, 16);
+
+    // High Voltage Danger Decal (Yellow Triangle)
+    ctx.fillStyle = '#ffab00';
+    ctx.beginPath();
+    ctx.moveTo(rx, ry - 10);
+    ctx.lineTo(rx + 4, ry - 3);
+    ctx.lineTo(rx - 4, ry - 3);
+    ctx.closePath();
+    ctx.fill();
+
+    // High-Voltage Tesla Electric Plasma Arc between cooling tower electrodes!
+    if (!this.isUnderConstruction) {
+      drawElectricArc(ctx, rx - 16, ry - 24, rx + 16, ry - 21, time, palette.primary);
+      drawSmokePuff(ctx, rx - 16, ry - 26, time, 1.2, 0.4);
+      drawSmokePuff(ctx, rx + 16, ry - 23, time, 2.7, 0.4);
+    }
+  }
+
+  drawRefineryDetails(ctx, rx, ry, roofW, roofH, palette, time, isNod) {
+    if (isNod) {
+      // Nod Tiberium Refinery
+      drawCylinder(ctx, rx - 16, ry - 2, 10, 6, 24, { side: '#1a1a1a', top: '#333333', edge: '#000' });
+      drawCylinder(ctx, rx + 16, ry + 3, 9, 5, 20, { side: '#1a1a1a', top: '#333333', edge: '#000' });
+
+      // Crimson accent panels
+      ctx.fillStyle = palette.primary;
+      ctx.fillRect(rx - 16, ry - 14, 10, 3);
+      ctx.fillRect(rx + 16, ry - 10, 9, 3);
+
+      // Tiberium Processing Swirling Vat
+      ctx.fillStyle = 'rgba(0, 230, 118, 0.5)';
+      ctx.beginPath();
+      ctx.ellipse(rx, ry + 2, 8, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Harvester laser guide lines at loading chute
+      ctx.strokeStyle = '#ff1744';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(rx - 12, ry + roofH * 0.12);
+      ctx.lineTo(rx + 12, ry + roofH * 0.12);
+      ctx.stroke();
+
+      if (!this.isUnderConstruction) {
+        drawSmokePuff(ctx, rx - 16, ry - 28, time, 0.6, 0.5);
       }
       return;
     }
 
-    // GDI command tower
-    const tx = rx - roofW * 0.15;
-    const ty = ry - roofH * 0.1;
-    ctx.fillStyle = '#37474f';
-    ctx.fillRect(tx - 8, ty - 28, 16, 28);
-    ctx.strokeStyle = '#263238';
-    ctx.strokeRect(tx - 8, ty - 28, 16, 28);
+    // GDI Tiberium Refinery
+    // Dual Storage Silos with Liquid Level Gauges
+    drawCylinder(ctx, rx - 18, ry, 10, 6, 24, { side: '#455a64', top: '#607d8b', edge: '#102027' });
+    drawCylinder(ctx, rx + 16, ry + 4, 9, 5, 20, { side: '#455a64', top: '#607d8b', edge: '#102027' });
 
-    ctx.fillStyle = palette.primary;
-    ctx.fillRect(tx - 6, ty - 26, 12, 4);
+    // Vertical Glowing Liquid Level Sight Gauge on Silos
+    const gaugeFill = 0.4 + Math.sin(time * 1.5) * 0.25;
+    ctx.fillStyle = '#0f1416';
+    ctx.fillRect(rx - 20, ry - 18, 3, 14);
+    ctx.fillStyle = '#00e676';
+    ctx.fillRect(rx - 20, ry - 18 + (14 * (1 - gaugeFill)), 3, 14 * gaugeFill);
 
-    // Radar dish
-    const pulse = time * 2.2;
-    ctx.strokeStyle = palette.accent;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(tx, ty - 32, 10, pulse - 0.8, pulse + 0.8);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(tx, ty - 32);
-    ctx.lineTo(tx + Math.cos(pulse) * 14, ty - 32 + Math.sin(pulse) * 5);
-    ctx.stroke();
-
-    // Crane arm
+    // Industrial Pipe Bridge connecting silos
     ctx.strokeStyle = '#78909c';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3.5;
     ctx.beginPath();
-    ctx.moveTo(rx + roofW * 0.2, ry + roofH * 0.05);
-    ctx.lineTo(rx + roofW * 0.35, ry - roofH * 0.25);
-    ctx.lineTo(rx + roofW * 0.08, ry - roofH * 0.2);
+    ctx.moveTo(rx - 18, ry - 12);
+    ctx.lineTo(rx + 16, ry - 6);
     ctx.stroke();
 
-    // Landing pad markings
-    ctx.strokeStyle = palette.trim;
-    ctx.globalAlpha = 0.45;
-    ctx.lineWidth = 1;
+    // Tiberium Ore Hopper with Crystal Clusters
+    ctx.fillStyle = '#263238';
     ctx.beginPath();
-    ctx.ellipse(rx, ry, roofW * 0.28, roofH * 0.22, 0, 0, Math.PI * 2);
-    ctx.stroke();
+    ctx.moveTo(rx - 8, ry - 4);
+    ctx.lineTo(rx + 8, ry - 4);
+    ctx.lineTo(rx + 5, ry + 8);
+    ctx.lineTo(rx - 5, ry + 8);
+    ctx.closePath();
+    ctx.fill();
+
+    // Tiberium Crystals in Hopper
+    drawTiberiumCrystal(ctx, rx - 2, ry, 5, '#00e676');
+    drawTiberiumCrystal(ctx, rx + 3, ry + 2, 4, '#76ff03');
+
+    // Harvester Unloading Dock Ramp with Hazard Stripes
+    const rampPt1 = { x: rx - roofW * 0.16, y: ry + roofH * 0.12 };
+    const rampPt2 = { x: rx + roofW * 0.16, y: ry + roofH * 0.12 };
+    drawHazardStripes(ctx, rampPt1, rampPt2, 4, 5, palette.accent, '#1a1a1a');
+
+    // Overhead guide lamps
+    ctx.fillStyle = '#ffab00';
     ctx.beginPath();
-    ctx.moveTo(rx - roofW * 0.15, ry);
-    ctx.lineTo(rx + roofW * 0.15, ry);
-    ctx.moveTo(rx, ry - roofH * 0.12);
-    ctx.lineTo(rx, ry + roofH * 0.12);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
+    ctx.arc(rampPt1.x, rampPt1.y - 4, 2, 0, Math.PI * 2);
+    ctx.arc(rampPt2.x, rampPt2.y - 4, 2, 0, Math.PI * 2);
+    ctx.fill();
 
-    // Blinking beacon
-    if (Math.sin(time * 6) > 0) {
-      ctx.fillStyle = '#ff5252';
-      ctx.beginPath();
-      ctx.arc(tx, ty - 38, 2.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  drawPowerDetails(ctx, rx, ry, roofW, roofH, palette, time, isNod) {
-    const pulse = (Math.sin(time * 4) + 1) / 2;
-    const coreColor = isNod
-      ? `rgba(239, 83, 80, ${0.45 + pulse * 0.45})`
-      : `rgba(0, 230, 118, ${0.45 + pulse * 0.45})`;
-    const shadowColor = isNod ? '#ef5350' : '#00e676';
-
-    drawCylinder(ctx, rx - 14, ry - 2, 7, 5, 16, { side: '#455a64', top: '#607d8b', edge: '#263238' });
-    drawCylinder(ctx, rx + 14, ry + 2, 7, 5, 16, { side: '#455a64', top: '#607d8b', edge: '#263238' });
+    // Exhaust Smokestacks
+    ctx.fillStyle = '#37474f';
+    ctx.fillRect(rx - 3, ry - 26, 6, 18);
 
     if (!this.isUnderConstruction) {
-      drawSmokePuff(ctx, rx - 14, ry - 20, time, 1.2);
-      drawSmokePuff(ctx, rx + 14, ry - 18, time, 2.4);
+      drawSmokePuff(ctx, rx, ry - 30, time, 0.5, 0.45);
+      drawSmokePuff(ctx, rx + 3, ry - 36, time, 1.4, 0.35);
     }
-
-    ctx.shadowColor = shadowColor;
-    ctx.shadowBlur = this.isUnderConstruction ? 0 : 10 + pulse * 8;
-    ctx.fillStyle = this.isUnderConstruction ? '#1b5e20' : coreColor;
-    ctx.beginPath();
-    ctx.ellipse(rx, ry, 10, 7, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#004d40';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-
-    // Grille lines
-    ctx.strokeStyle = '#263238';
-    ctx.lineWidth = 1;
-    for (let i = -8; i <= 8; i += 4) {
-      ctx.beginPath();
-      ctx.moveTo(rx + i, ry - 5);
-      ctx.lineTo(rx + i, ry + 5);
-      ctx.stroke();
-    }
-  }
-
-  drawRefineryDetails(ctx, rx, ry, roofW, roofH, palette, time) {
-    drawCylinder(ctx, rx - 18, ry, 9, 6, 22, { side: '#546e7a', top: '#78909c', edge: '#263238' });
-    drawCylinder(ctx, rx + 16, ry + 4, 8, 5, 18, { side: '#546e7a', top: '#78909c', edge: '#263238' });
-
-    // Pipe bridge
-    ctx.strokeStyle = '#78909c';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(rx - 18, ry - 8);
-    ctx.lineTo(rx + 16, ry - 2);
-    ctx.stroke();
-
-    // Chimney
-    ctx.fillStyle = '#37474f';
-    ctx.fillRect(rx - 3, ry - 24, 7, 18);
-    ctx.strokeStyle = '#263238';
-    ctx.strokeRect(rx - 3, ry - 24, 7, 18);
-
-    if (!this.isUnderConstruction) {
-      drawSmokePuff(ctx, rx, ry - 28, time, 0.5, 0.4);
-      drawSmokePuff(ctx, rx + 3, ry - 34, time, 1.1, 0.3);
-    }
-
-    // Ore loading dock
-    ctx.fillStyle = palette.primary;
-    ctx.globalAlpha = 0.35;
-    ctx.fillRect(rx - roofW * 0.12, ry + roofH * 0.08, roofW * 0.24, 4);
-    ctx.globalAlpha = 1;
-
-    // Tiberium stain
-    ctx.fillStyle = 'rgba(0, 230, 118, 0.25)';
-    ctx.beginPath();
-    ctx.ellipse(rx + 4, ry + 6, 6, 4, 0, 0, Math.PI * 2);
-    ctx.fill();
   }
 
   drawBarracksDetails(ctx, rx, ry, roofW, roofH, palette, time, isNod) {
     if (isNod) {
-      ctx.fillStyle = '#1a1a1a';
-      ctx.fillRect(rx - 14, ry - 6, 28, 14);
+      // HAND OF NOD (Iconic Nod Infantry / Vehicle Spire)
+      // Dark stealth base temple
+      ctx.fillStyle = '#141414';
+      ctx.fillRect(rx - 16, ry - 8, 32, 16);
       ctx.strokeStyle = palette.primary;
       ctx.lineWidth = 1.5;
-      ctx.strokeRect(rx - 14, ry - 6, 28, 14);
-      for (const ox of [-10, 0, 10]) {
-        ctx.beginPath();
-        ctx.moveTo(rx + ox, ry - 6);
-        ctx.lineTo(rx + ox, ry - 18);
-        ctx.stroke();
-      }
-      ctx.fillStyle = palette.trim;
-      ctx.fillRect(rx - 8, ry + 2, 16, 8);
+      ctx.strokeRect(rx - 16, ry - 8, 32, 16);
+
+      // Red Glowing Entrance Portal / Blast Door
+      ctx.fillStyle = '#800000';
+      ctx.fillRect(rx - 7, ry + 2, 14, 8);
+      ctx.fillStyle = '#ff1744';
+      ctx.fillRect(rx - 5, ry + 4, 10, 6);
+
+      // TOWERING HAND OF NOD GAUNTLET REACHING SKYWARD!
+      // Wrist / Base
+      ctx.fillStyle = '#1c1c1c';
+      ctx.fillRect(rx - 8, ry - 22, 16, 14);
+
+      // 4 Armor-Clawed Fingers & Palm holding Glowing Red Orb
+      ctx.strokeStyle = '#2d2d2d';
+      ctx.lineWidth = 2.5;
+
+      // Finger claws extending up and inward around orb
+      ctx.beginPath();
+      // Outer Left Finger
+      ctx.moveTo(rx - 8, ry - 22);
+      ctx.lineTo(rx - 12, ry - 36);
+      ctx.lineTo(rx - 6, ry - 44);
+      // Inner Left Finger
+      ctx.moveTo(rx - 4, ry - 22);
+      ctx.lineTo(rx - 6, ry - 38);
+      ctx.lineTo(rx - 2, ry - 46);
+      // Inner Right Finger
+      ctx.moveTo(rx + 4, ry - 22);
+      ctx.lineTo(rx + 6, ry - 38);
+      ctx.lineTo(rx + 2, ry - 46);
+      // Outer Right Finger
+      ctx.moveTo(rx + 8, ry - 22);
+      ctx.lineTo(rx + 12, ry - 36);
+      ctx.lineTo(rx + 6, ry - 44);
+      ctx.stroke();
+
+      // Glowing Red Orb held in the palm of the Hand!
+      const pulse = 0.5 + Math.sin(time * 5) * 0.4;
+      ctx.save();
+      ctx.shadowColor = '#ff1744';
+      ctx.shadowBlur = 14 * pulse;
+      ctx.fillStyle = `rgba(255, 23, 68, ${0.65 + 0.35 * pulse})`;
+      ctx.beginPath();
+      ctx.arc(rx, ry - 38, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Nod Emblem on temple base
+      ctx.fillStyle = palette.primary;
+      ctx.beginPath();
+      ctx.moveTo(rx, ry - 6);
+      ctx.lineTo(rx + 4, ry - 2);
+      ctx.lineTo(rx - 4, ry - 2);
+      ctx.closePath();
+      ctx.fill();
       return;
     }
 
-    // GDI bunker entrance
+    // GDI Warfactory / Motor Pool
+    // Heavy Vehicle Roll-Up Shutter Door with Hazard Stripes
+    const doorPt1 = { x: rx - 10, y: ry + 6 };
+    const doorPt2 = { x: rx + 10, y: ry + 6 };
     ctx.fillStyle = '#263238';
-    ctx.fillRect(rx - 10, ry + 2, 20, 10);
-    ctx.strokeStyle = '#000';
-    ctx.strokeRect(rx - 10, ry + 2, 20, 10);
+    ctx.fillRect(rx - 12, ry + 1, 24, 10);
+    drawHazardStripes(ctx, doorPt1, doorPt2, 3, 4, palette.accent, '#1a1a1a');
 
-    ctx.fillStyle = '#37474f';
-    ctx.fillRect(rx - 7, ry + 4, 14, 8);
-    ctx.strokeStyle = palette.trim;
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(rx - 7, ry + 4, 14, 8);
+    // Overhead Crane Gantry Rail Frame for vehicle repairs
+    ctx.strokeStyle = '#78909c';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(rx - 16, ry - 14);
+    ctx.lineTo(rx + 16, ry - 14);
+    ctx.lineTo(rx + 16, ry - 2);
+    ctx.moveTo(rx - 16, ry - 14);
+    ctx.lineTo(rx - 16, ry - 2);
+    ctx.stroke();
 
-    // Window slits with interior glow
-    const glow = 0.5 + Math.sin(time * 3) * 0.15;
-    ctx.fillStyle = `rgba(255, 183, 77, ${glow})`;
-    ctx.fillRect(rx - 18, ry - 4, 5, 3);
-    ctx.fillRect(rx + 13, ry - 2, 5, 3);
+    // Workshop Window Slits with warm interior amber glow
+    const glow = 0.5 + Math.sin(time * 3) * 0.2;
+    ctx.fillStyle = `rgba(255, 179, 0, ${glow})`;
+    ctx.fillRect(rx - 18, ry - 6, 5, 3);
+    ctx.fillRect(rx + 13, ry - 6, 5, 3);
 
-    // Sandbag corners
-    ctx.fillStyle = '#8d6e63';
-    for (const ox of [-roofW * 0.22, roofW * 0.18]) {
+    // Sandbag fortified corners
+    ctx.fillStyle = '#795548';
+    for (const ox of [-roofW * 0.24, roofW * 0.2]) {
       ctx.beginPath();
-      ctx.ellipse(rx + ox, ry + roofH * 0.12, 7, 4, 0, 0, Math.PI * 2);
+      ctx.ellipse(rx + ox, ry + roofH * 0.1, 7, 4, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = '#5d4037';
+      ctx.strokeStyle = '#4e342e';
       ctx.stroke();
     }
 
-    // Flag pole
+    // Flagpole with waving GDI Faction Banner
     ctx.strokeStyle = '#cfd8dc';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(rx + roofW * 0.22, ry - roofH * 0.15);
-    ctx.lineTo(rx + roofW * 0.22, ry - roofH * 0.35);
+    ctx.moveTo(rx + roofW * 0.22, ry - roofH * 0.1);
+    ctx.lineTo(rx + roofW * 0.22, ry - roofH * 0.38);
     ctx.stroke();
 
-    const wave = Math.sin(time * 5) * 2;
+    const wave = Math.sin(time * 6) * 2.5;
     ctx.fillStyle = palette.primary;
     ctx.beginPath();
-    ctx.moveTo(rx + roofW * 0.22, ry - roofH * 0.35);
-    ctx.lineTo(rx + roofW * 0.22 + 18 + wave, ry - roofH * 0.33);
-    ctx.lineTo(rx + roofW * 0.22 + 16 + wave, ry - roofH * 0.28);
-    ctx.lineTo(rx + roofW * 0.22, ry - roofH * 0.30);
+    ctx.moveTo(rx + roofW * 0.22, ry - roofH * 0.38);
+    ctx.lineTo(rx + roofW * 0.22 + 16 + wave, ry - roofH * 0.35);
+    ctx.lineTo(rx + roofW * 0.22 + 14 + wave, ry - roofH * 0.28);
+    ctx.lineTo(rx + roofW * 0.22, ry - roofH * 0.31);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = palette.dark;
-    ctx.stroke();
   }
 
   drawFenceDetails(ctx, rx, ry, roofW, roofH, palette, isNod) {
-    ctx.strokeStyle = isNod ? palette.primary : '#90a4ae';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(rx - roofW * 0.3, ry);
-    ctx.lineTo(rx + roofW * 0.3, ry);
-    ctx.stroke();
-
-    ctx.fillStyle = isNod ? '#212121' : palette.primary;
-    for (const ox of [-roofW * 0.25, 0, roofW * 0.25]) {
-      ctx.fillRect(rx + ox - 2, ry - 18, 4, 22);
-      ctx.strokeStyle = '#000';
-      ctx.strokeRect(rx + ox - 2, ry - 18, 4, 22);
-      if (isNod) {
-        ctx.fillStyle = palette.trim;
+    if (isNod) {
+      // Nod Spike Barrier with Red Laser Razor Wire
+      ctx.fillStyle = '#1c1c1c';
+      for (const ox of [-roofW * 0.28, 0, roofW * 0.28]) {
+        ctx.fillRect(rx + ox - 2, ry - 18, 4, 20);
+        // Angular spike tip
+        ctx.fillStyle = palette.primary;
         ctx.beginPath();
-        ctx.moveTo(rx + ox, ry - 20);
-        ctx.lineTo(rx + ox + 3, ry - 14);
-        ctx.lineTo(rx + ox - 3, ry - 14);
+        ctx.moveTo(rx + ox, ry - 24);
+        ctx.lineTo(rx + ox + 3, ry - 18);
+        ctx.lineTo(rx + ox - 3, ry - 18);
         ctx.closePath();
         ctx.fill();
-        ctx.fillStyle = '#212121';
+        ctx.fillStyle = '#1c1c1c';
       }
+
+      // Glowing Red Laser Wires between spikes
+      ctx.save();
+      ctx.shadowColor = '#ff1744';
+      ctx.shadowBlur = 6;
+      ctx.strokeStyle = '#ff1744';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(rx - roofW * 0.28, ry - 14);
+      ctx.lineTo(rx + roofW * 0.28, ry - 14);
+      ctx.moveTo(rx - roofW * 0.28, ry - 8);
+      ctx.lineTo(rx + roofW * 0.28, ry - 8);
+      ctx.stroke();
+      ctx.restore();
+      return;
     }
+
+    // GDI Concrete Barrier Wall with Steel Caps & Warning Stripes
+    ctx.fillStyle = '#546e7a';
+    ctx.fillRect(rx - roofW * 0.35, ry - 12, roofW * 0.7, 14);
+    ctx.strokeStyle = '#263238';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(rx - roofW * 0.35, ry - 12, roofW * 0.7, 14);
+
+    // Yellow Hazard Stripes along barrier top
+    const p1 = { x: rx - roofW * 0.32, y: ry - 12 };
+    const p2 = { x: rx + roofW * 0.32, y: ry - 12 };
+    drawHazardStripes(ctx, p1, p2, 3, 4, palette.accent, '#1a1a1a');
+
+    // Steel cap posts
+    ctx.fillStyle = '#78909c';
+    ctx.fillRect(rx - roofW * 0.35 - 1, ry - 14, 4, 16);
+    ctx.fillRect(rx + roofW * 0.35 - 3, ry - 14, 4, 16);
   }
 
   drawGateDetails(ctx, rx, ry, roofW, roofH, palette, time, isNod) {
+    if (isNod) {
+      // Nod Laser Gate Pillars & Forcefield Beam
+      ctx.fillStyle = '#1c1c1c';
+      ctx.fillRect(rx - roofW * 0.35, ry - 22, 6, 26);
+      ctx.fillRect(rx + roofW * 0.35 - 6, ry - 22, 6, 26);
+
+      // Crimson Emitter Tops
+      ctx.fillStyle = palette.primary;
+      ctx.fillRect(rx - roofW * 0.35 - 1, ry - 25, 8, 4);
+      ctx.fillRect(rx + roofW * 0.35 - 7, ry - 25, 8, 4);
+
+      // Pulsing Red Forcefield Barrier Beam when gate is active
+      const pulse = 0.5 + Math.sin(time * 8) * 0.35;
+      ctx.save();
+      ctx.shadowColor = '#ff1744';
+      ctx.shadowBlur = 10 * pulse;
+      ctx.strokeStyle = `rgba(255, 23, 68, ${0.7 + pulse * 0.3})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(rx - roofW * 0.32, ry - 10);
+      ctx.lineTo(rx + roofW * 0.32, ry - 10);
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+
+    // GDI Reinforced Gate Posts & Overhead Bar
+    ctx.fillStyle = '#37474f';
+    ctx.fillRect(rx - roofW * 0.36, ry - 22, 7, 26);
+    ctx.fillRect(rx + roofW * 0.36 - 7, ry - 22, 7, 26);
+
+    // Hazard stripes on gate posts
+    const p1 = { x: rx - roofW * 0.36, y: ry - 18 };
+    const p2 = { x: rx - roofW * 0.36, y: ry - 4 };
+    drawHazardStripes(ctx, p1, p2, 4, 3, palette.accent, '#111');
+
+    // Overhead Barrier Bar
     ctx.strokeStyle = '#78909c';
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(rx - roofW * 0.32, ry + 2);
-    ctx.lineTo(rx - 4, ry - 5 + Math.sin(time * 2) * 2);
-    ctx.moveTo(rx + roofW * 0.32, ry + 2);
-    ctx.lineTo(rx + 4, ry - 5 - Math.sin(time * 2) * 2);
+    ctx.moveTo(rx - roofW * 0.36, ry - 20);
+    ctx.lineTo(rx + roofW * 0.36, ry - 20);
     ctx.stroke();
 
-    ctx.fillStyle = palette.primary;
-    ctx.fillRect(rx - roofW * 0.36, ry - 20, 5, 24);
-    ctx.fillRect(rx + roofW * 0.36 - 5, ry - 20, 5, 24);
+    // Warning Light Lamp
+    if (Math.sin(time * 6) > 0) {
+      ctx.fillStyle = '#ffab00';
+      ctx.beginPath();
+      ctx.arc(rx, ry - 22, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   drawTurretDetails(ctx, rx, ry, roofW, roofH, palette, isNod) {
     if (isNod) {
-      // Obelisk of Light (Nod heavy defensive laser tower)
+      // OBELISK OF LIGHT (Iconic Nod Heavy Laser Tower)
       // Tall obsidian pyramid spire
-      ctx.fillStyle = '#111111';
+      ctx.fillStyle = '#0d0d0d';
       ctx.beginPath();
-      ctx.moveTo(rx, ry - 42);
-      ctx.lineTo(rx + 11, ry + 4);
-      ctx.lineTo(rx - 11, ry + 4);
+      ctx.moveTo(rx, ry - 48);
+      ctx.lineTo(rx + 12, ry + 4);
+      ctx.lineTo(rx - 12, ry + 4);
       ctx.closePath();
       ctx.fill();
-      
-      // Red glowing border frames
+
+      // Red glowing border frames along edges
       ctx.strokeStyle = '#ef5350';
-      ctx.lineWidth = 1.2;
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.moveTo(rx, ry - 30);
-      ctx.lineTo(rx + 7, ry + 2);
-      ctx.moveTo(rx, ry - 30);
-      ctx.lineTo(rx - 7, ry + 2);
+      ctx.moveTo(rx, ry - 48);
+      ctx.lineTo(rx + 8, ry + 3);
+      ctx.moveTo(rx, ry - 48);
+      ctx.lineTo(rx - 8, ry + 3);
       ctx.stroke();
 
-      // Red central crystal slit charging core
+      // Red central charging crystal slit
       ctx.fillStyle = '#ff1744';
-      ctx.fillRect(rx - 2, ry - 18, 4, 15);
+      ctx.fillRect(rx - 2.5, ry - 22, 5, 18);
 
-      // Tip pulsing emitter orb
-      const pulse = 0.5 + Math.sin(Date.now() / 140) * 0.4;
+      // Tip intense pulsing crystal orb with aura flare!
+      const pulse = 0.5 + Math.sin(Date.now() / 120) * 0.45;
       ctx.save();
       ctx.shadowColor = '#ff1744';
-      ctx.shadowBlur = 14 * pulse;
-      ctx.fillStyle = `rgba(255, 23, 68, ${0.45 + 0.55 * pulse})`;
+      ctx.shadowBlur = 18 * pulse;
+      ctx.fillStyle = `rgba(255, 23, 68, ${0.55 + 0.45 * pulse})`;
       ctx.beginPath();
-      ctx.arc(rx, ry - 42, 5.5, 0, Math.PI * 2);
+      ctx.arc(rx, ry - 48, 6, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
       return;
     }
 
-    drawCylinder(ctx, rx, ry, 15, 9, 14, { side: '#37474f', top: palette.secondary, edge: '#111' });
+    // GDI Guard Tower / Cannon Turret
+    // Fortified Pillbox Bunker Base with Sandbags
+    drawCylinder(ctx, rx, ry + 4, 16, 9, 12, { side: '#37474f', top: '#546e7a', edge: '#102027' });
+
+    // Sandbag Ring at base
+    ctx.fillStyle = '#795548';
+    ctx.beginPath();
+    ctx.ellipse(rx, ry + 6, 17, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#4e342e';
+    ctx.stroke();
+
+    // Rotating Twin Cannon Turret Top
     ctx.save();
-    ctx.translate(rx, ry - 18);
+    ctx.translate(rx, ry - 14);
     ctx.scale(1, 0.55);
     ctx.rotate(this.turretAngle);
+
+    // Twin Cannon Barrels with Recoil Brakes
     ctx.fillStyle = '#90a4ae';
-    ctx.fillRect(0, -3, 26, 6);
-    ctx.strokeStyle = '#000';
-    ctx.strokeRect(0, -3, 26, 6);
+    ctx.fillRect(2, -5, 24, 4);
+    ctx.fillRect(2, 1, 24, 4);
+    ctx.strokeStyle = '#102027';
+    ctx.strokeRect(2, -5, 24, 4);
+    ctx.strokeRect(2, 1, 24, 4);
+
+    // Turret Dome Cupola
     ctx.fillStyle = palette.primary;
     ctx.beginPath();
-    ctx.arc(0, 0, 9, 0, Math.PI * 2);
+    ctx.arc(0, 0, 10, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     ctx.restore();
@@ -667,74 +967,95 @@ export class Building extends Entity {
 
   drawLaserDetails(ctx, rx, ry, roofW, roofH, palette, time, isNod) {
     if (isNod) {
-      // Nod Laser Turret Spire (basic defense spire)
-      // Base block
-      drawCylinder(ctx, rx, ry + 4, 11, 7, 9, { side: '#212121', top: '#424242', edge: '#111' });
-      // Central emitter rod
-      drawCylinder(ctx, rx, ry - 5, 5.5, 3.5, 22, { side: '#1a1a1a', top: palette.secondary, edge: '#000' });
-      
-      const pulse = 0.4 + Math.sin(time * 10) * 0.35;
+      // Nod High-Tech Laser Turret Spire
+      drawCylinder(ctx, rx, ry + 4, 12, 7, 10, { side: '#1c1c1c', top: '#333333', edge: '#000' });
+      drawCylinder(ctx, rx, ry - 6, 6, 4, 22, { side: '#141414', top: palette.secondary, edge: '#000' });
+
+      // Dual Red Laser Optics
+      const pulse = 0.4 + Math.sin(time * 9) * 0.35;
       ctx.save();
-      // Glowing laser tip
       ctx.shadowColor = '#ff1744';
       ctx.shadowBlur = 12 * pulse;
       ctx.fillStyle = `rgba(255, 23, 68, ${0.5 + pulse * 0.5})`;
       ctx.beginPath();
-      ctx.arc(rx, ry - 27, 4.5, 0, Math.PI * 2);
+      ctx.arc(rx - 3, ry - 28, 3.5, 0, Math.PI * 2);
+      ctx.arc(rx + 3, ry - 28, 3.5, 0, Math.PI * 2);
       ctx.fill();
-      
-      // Side supporting metallic struts
-      ctx.strokeStyle = '#2b2b2b';
-      ctx.lineWidth = 2.2;
-      ctx.beginPath();
-      ctx.moveTo(rx - 8, ry + 4);
-      ctx.lineTo(rx - 4, ry - 14);
-      ctx.moveTo(rx + 8, ry + 4);
-      ctx.lineTo(rx + 4, ry - 14);
-      ctx.stroke();
       ctx.restore();
       return;
     }
 
-    drawCylinder(ctx, rx, ry + 5, 13, 8, 28, { side: '#263238', top: '#455a64', edge: '#111' });
-    const pulse = 0.5 + Math.sin(time * 7) * 0.25;
+    // GDI Sonic Emitter Tower
+    drawCylinder(ctx, rx, ry + 5, 14, 8, 26, { side: '#263238', top: '#455a64', edge: '#102027' });
+
+    // Acoustic Speaker Rings Emitting Sonic Pulses
+    const pulse = (time * 3) % 1;
     ctx.save();
     ctx.translate(rx, ry - 28);
     ctx.scale(1, 0.55);
-    ctx.rotate(this.turretAngle);
+
+    // Triple Concentric Acoustic Dish Rings
     ctx.strokeStyle = palette.accent;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(22, 0);
+    ctx.arc(0, 0, 12, 0, Math.PI * 2);
+    ctx.arc(0, 0, 7, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.restore();
-    ctx.shadowColor = palette.accent;
-    ctx.shadowBlur = 10;
-    ctx.fillStyle = `rgba(128, 222, 234, ${pulse})`;
+
+    // Expanding Sonic Ring Wave
+    ctx.strokeStyle = `rgba(128, 222, 234, ${0.8 * (1 - pulse)})`;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(rx, ry - 32, 6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
+    ctx.arc(0, 0, 12 + pulse * 14, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.restore();
   }
 
   drawExplosiveTowerDetails(ctx, rx, ry, roofW, roofH, palette, time, isNod) {
-    const topColor = isNod ? palette.secondary : '#6d4c41';
-    drawCylinder(ctx, rx, ry + 3, 14, 8, 24, { side: '#4e342e', top: topColor, edge: '#111' });
-    ctx.fillStyle = isNod ? palette.primary : '#ff7043';
+    if (isNod) {
+      // NOD SAM SITE (Anti-Air & Ground Missile Turret Pod)
+      // Armored Base Pedestal
+      drawCylinder(ctx, rx, ry + 4, 13, 8, 14, { side: '#1c1c1c', top: '#333333', edge: '#000' });
+
+      // Rotating Quad Missile Launcher Box
+      ctx.save();
+      ctx.translate(rx, ry - 14);
+      ctx.scale(1, 0.55);
+      ctx.rotate(this.turretAngle);
+
+      // Launcher Pod Box
+      ctx.fillStyle = '#263238';
+      ctx.fillRect(-8, -10, 22, 20);
+      ctx.strokeStyle = '#000';
+      ctx.strokeRect(-8, -10, 22, 20);
+
+      // 4 Loaded Missiles with Red Warhead Tips
+      ctx.fillStyle = '#d32f2f';
+      ctx.fillRect(14, -8, 5, 3);
+      ctx.fillRect(14, -3, 5, 3);
+      ctx.fillRect(14, 2, 5, 3);
+      ctx.fillRect(14, 7, 5, 3);
+
+      ctx.restore();
+      return;
+    }
+
+    // GDI Disruptor / Heavy Mortar Tower
+    drawCylinder(ctx, rx, ry + 3, 15, 9, 22, { side: '#4e342e', top: '#6d4c41', edge: '#102027' });
+
+    // Reinforced Concrete Blast Shield Wall
+    ctx.strokeStyle = palette.primary;
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(rx, ry - 40);
-    ctx.lineTo(rx + 13, ry - 20);
-    ctx.lineTo(rx - 13, ry - 20);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = '#000';
+    ctx.arc(rx, ry - 14, 12, Math.PI * 0.2, Math.PI * 1.8);
     ctx.stroke();
 
-    ctx.fillStyle = `rgba(255, 171, 0, ${0.35 + Math.sin(time * 5) * 0.2})`;
-    ctx.beginPath();
-    ctx.arc(rx, ry - 24, 6, 0, Math.PI * 2);
-    ctx.fill();
+    // Heavy Mortar Cannon Barrel
+    ctx.fillStyle = '#212121';
+    ctx.fillRect(rx - 4, ry - 38, 8, 20);
+    ctx.strokeStyle = '#000';
+    ctx.strokeRect(rx - 4, ry - 38, 8, 20);
   }
 
   drawConstructionOverlay(ctx, ptTop, ptRight, ptBottom, ptLeft, h) {

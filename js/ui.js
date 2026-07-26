@@ -49,6 +49,7 @@ export class UIManager {
     document.body.appendChild(this.hoverTooltip);
 
     this.initListeners();
+    this.initMinimapListeners();
     this.applyRaceLabels();
   }
 
@@ -173,6 +174,71 @@ export class UIManager {
     }
 
     this.syncEnemyRaceOptions(selectedPlayerRace);
+  }
+
+  initMinimapListeners() {
+    if (!this.minimapCanvas) return;
+
+    this.isMinimapDragging = false;
+    this.minimapPings = [];
+
+    this.minimapCanvas.addEventListener('mousedown', (e) => {
+      if (this.game.state !== 'playing') return;
+      this.isMinimapDragging = true;
+      this.jumpCameraToMinimap(e, true);
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (this.isMinimapDragging && this.game.state === 'playing') {
+        this.jumpCameraToMinimap(e, false);
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      this.isMinimapDragging = false;
+    });
+  }
+
+  jumpCameraToMinimap(e, createPing = false) {
+    if (!this.minimapCanvas || !this.game.grid) return;
+
+    const rect = this.minimapCanvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    const mouseX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const mouseY = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+
+    const canvasX = (mouseX / rect.width) * this.minimapCanvas.width;
+    const canvasY = (mouseY / rect.height) * this.minimapCanvas.height;
+
+    const mapW = this.game.grid.width;
+    const mapH = this.game.grid.height;
+    const cellW = this.minimapCanvas.width / mapW;
+    const cellH = this.minimapCanvas.height / mapH;
+
+    const targetGridX = canvasX / cellW;
+    const targetGridY = canvasY / cellH;
+
+    const worldCoords = this.game.grid.getTileCoords(targetGridX, targetGridY);
+    const cam = this.game.camera;
+
+    cam.x = worldCoords.x - cam.width / 2;
+    cam.y = worldCoords.y - cam.height / 2;
+
+    // Clamp camera within isometric map boundaries
+    const limitX = this.game.grid.mapWidthPx;
+    const limitY = this.game.grid.mapHeightPx;
+    cam.x = Math.max(0, Math.min(limitX - cam.width, cam.x));
+    cam.y = Math.max(0, Math.min(limitY - cam.height, cam.y));
+
+    if (createPing) {
+      this.minimapPings.push({ x: canvasX, y: canvasY, radius: 2, alpha: 1.0 });
+    }
+
+    if (this.game.input) {
+      this.game.input.updateWorldCoordinates();
+      this.game.input.updateHoveredEntity();
+    }
   }
 
   syncEnemyRaceOptions(playerRace) {
@@ -523,10 +589,45 @@ export class UIManager {
       getRace(this.game.enemyRace).palette.minimap
     );
 
+    // Rotating Radar Sweep Line
+    const time = this.game.currentTime || (Date.now() / 1000);
+    const sweepAngle = time * 2.0;
+    const cx = this.minimapCanvas.width / 2;
+    const cy = this.minimapCanvas.height / 2;
+    const radius = Math.hypot(cx, cy);
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(79, 195, 247, 0.25)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(sweepAngle) * radius, cy + Math.sin(sweepAngle) * radius);
+    ctx.stroke();
+    ctx.restore();
+
+    // Render Click Pings
+    if (this.minimapPings) {
+      for (let i = this.minimapPings.length - 1; i >= 0; i--) {
+        const ping = this.minimapPings[i];
+        ping.radius += 1.2;
+        ping.alpha -= 0.04;
+        if (ping.alpha <= 0) {
+          this.minimapPings.splice(i, 1);
+          continue;
+        }
+        ctx.save();
+        ctx.strokeStyle = `rgba(255, 255, 255, ${ping.alpha})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(ping.x, ping.y, ping.radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
     // Draw projected Camera Viewport on minimap
     const cam = this.game.camera;
     const getGridCellCoords = (wx, wy) => {
-      // Simplified grid cell projections for viewport outline
       const U = (wx - this.game.grid.height * this.game.grid.halfW) / this.game.grid.halfW;
       const V = wy / this.game.grid.halfH;
       return {
@@ -541,14 +642,17 @@ export class UIManager {
     const br = getGridCellCoords(cam.x + cam.width, cam.y + cam.height);
     const bl = getGridCellCoords(cam.x, cam.y + cam.height);
 
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
     ctx.beginPath();
     ctx.moveTo(tl.x * cellW, tl.y * cellH);
     ctx.lineTo(tr.x * cellW, tr.y * cellH);
     ctx.lineTo(br.x * cellW, br.y * cellH);
     ctx.lineTo(bl.x * cellW, bl.y * cellH);
     ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
     ctx.stroke();
   }
 }

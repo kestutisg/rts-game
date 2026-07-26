@@ -35,6 +35,10 @@ export class InputHandler {
   initListeners() {
     window.addEventListener('keydown', (e) => {
       this.keys[e.key.toLowerCase()] = true;
+
+      if ((e.key === ' ' || e.key.toLowerCase() === 'h') && this.game.state === 'playing') {
+        this.centerCameraOnSelectedOrBase();
+      }
     });
 
     window.addEventListener('keyup', (e) => {
@@ -333,6 +337,37 @@ export class InputHandler {
       cam.y = Math.max(0, Math.min(limitY - cam.height, cam.y));
       
       this.updateWorldCoordinates();
+    }
+  }
+
+  centerCameraOnSelectedOrBase() {
+    let targetX = null;
+    let targetY = null;
+
+    if (this.game.selectedEntities.length > 0) {
+      const ent = this.game.selectedEntities[0];
+      targetX = ent.x;
+      targetY = ent.y;
+    } else {
+      const cyard = this.game.playerEntities.find(b => b.isBuilding && b.type === 'cyard' && !b.isDead);
+      if (cyard) {
+        targetX = cyard.x;
+        targetY = cyard.y;
+      }
+    }
+
+    if (targetX !== null && targetY !== null) {
+      const cam = this.game.camera;
+      cam.x = targetX - cam.width / 2;
+      cam.y = targetY - cam.height / 2;
+
+      const limitX = this.game.grid.mapWidthPx;
+      const limitY = this.game.grid.mapHeightPx;
+      cam.x = Math.max(0, Math.min(limitX - cam.width, cam.x));
+      cam.y = Math.max(0, Math.min(limitY - cam.height, cam.y));
+
+      this.updateWorldCoordinates();
+      this.updateHoveredEntity();
     }
   }
 

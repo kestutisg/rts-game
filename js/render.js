@@ -190,3 +190,125 @@ export function drawHealthBar(ctx, sx, sy, w, ratio) {
   ctx.lineWidth = 0.5;
   ctx.strokeRect(bx, by, barW, barH);
 }
+
+export function drawHazardStripes(ctx, p1, p2, thickness = 4, stripeW = 6, c1 = '#ffb300', c2 = '#1a1a1a') {
+  ctx.save();
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const dist = Math.hypot(dx, dy);
+  const angle = Math.atan2(dy, dx);
+
+  ctx.translate(p1.x, p1.y);
+  ctx.rotate(angle);
+
+  ctx.fillStyle = c2;
+  ctx.fillRect(0, -thickness / 2, dist, thickness);
+
+  ctx.fillStyle = c1;
+  const stripeStep = stripeW * 2;
+  for (let x = -stripeW; x < dist + stripeW; x += stripeStep) {
+    ctx.beginPath();
+    ctx.moveTo(x, -thickness / 2);
+    ctx.lineTo(x + stripeW, -thickness / 2);
+    ctx.lineTo(x, thickness / 2);
+    ctx.lineTo(x - stripeW, thickness / 2);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+export function drawTiberiumCrystal(ctx, x, y, size = 6, color = '#00e676') {
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 8;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x, y - size);
+  ctx.lineTo(x + size * 0.5, y - size * 0.2);
+  ctx.lineTo(x + size * 0.3, y + size * 0.3);
+  ctx.lineTo(x - size * 0.3, y + size * 0.3);
+  ctx.lineTo(x - size * 0.5, y - size * 0.2);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.globalAlpha = 0.6;
+  ctx.beginPath();
+  ctx.moveTo(x, y - size);
+  ctx.lineTo(x + size * 0.2, y - size * 0.2);
+  ctx.lineTo(x, y);
+  ctx.lineTo(x - size * 0.2, y - size * 0.2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+export function drawElectricArc(ctx, x1, y1, x2, y2, time, color = '#80deea') {
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 10;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.8;
+
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const steps = 4;
+  
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const nx = x1 + dx * t + (Math.sin(time * 35 + i * 4) * 6);
+    const ny = y1 + dy * t + (Math.cos(time * 35 + i * 3) * 4);
+    ctx.lineTo(nx, ny);
+  }
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+
+  // Core bright wire
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  ctx.restore();
+}
+
+export function drawRadarDish(ctx, x, y, radius, time, color = '#90a4ae') {
+  ctx.save();
+  const angle = time * 2.5;
+  ctx.translate(x, y);
+  ctx.scale(1, 0.55);
+
+  // Rim
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Dish interior lattice
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.5, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Rotating feed horn arm
+  const armX = Math.cos(angle) * radius;
+  const armY = Math.sin(angle) * radius;
+  ctx.strokeStyle = '#37474f';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(armX, armY);
+  ctx.stroke();
+
+  // Feed tip
+  ctx.fillStyle = '#ffab00';
+  ctx.beginPath();
+  ctx.arc(armX, armY, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
