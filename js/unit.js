@@ -909,11 +909,7 @@ export class Harvester extends Unit {
     const amountToUnload = Math.min(this.depositRate * dt, this.cargo);
     this.cargo -= amountToUnload;
 
-    if (this.faction === 'player') {
-      game.playerCredits += amountToUnload;
-    } else {
-      game.enemyCredits += amountToUnload;
-    }
+    game.addCredits(this.faction, amountToUnload);
 
     const dx = this.depositTargetRefinery.x - this.x;
     const dy = this.depositTargetRefinery.y - this.y;

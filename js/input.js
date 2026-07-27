@@ -297,7 +297,10 @@ export class InputHandler {
     }
 
     // Placement confirmed
-    this.game.playerCredits -= this.game.placementCost;
+    if (!this.game.spendCredits('player', this.game.placementCost)) {
+      this.game.ui.setStatusText("INSUFFICIENT CREDITS.");
+      return;
+    }
     this.game.spawnBuilding('player', this.game.placementType, tile.x, tile.y, this.game.playerRace);
     
     // Clear placement

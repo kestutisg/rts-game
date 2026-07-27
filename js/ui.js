@@ -289,7 +289,7 @@ export class UIManager {
       return;
     }
 
-    if (this.game.playerCredits < cost) {
+    if (!this.game.canAffordCredits('player', cost)) {
       this.setStatusText("INSUFFICIENT CREDITS.");
       return;
     }
@@ -349,12 +349,12 @@ export class UIManager {
 
     const cost = def.cost;
 
-    if (this.game.playerCredits < cost) {
+    if (!this.game.canAffordCredits('player', cost)) {
       this.setStatusText("INSUFFICIENT CREDITS.");
       return;
     }
 
-    this.game.playerCredits = Math.round((this.game.playerCredits - cost) * 100) / 100;
+    this.game.spendCredits('player', cost);
     parentBuilding.queueUnit(type);
     const unitName = getRaceUnitName(this.game.playerRace, type).toUpperCase();
     this.setStatusText(`TRAINING ${unitName}... QUEUED: ${parentBuilding.buildQueue.length}`);
@@ -423,7 +423,10 @@ export class UIManager {
     this.updateSidebarBuild(dt);
     this.updateCancelBuildButton();
 
-    this.creditsDisplay.innerText = `$${Math.round(this.game.playerCredits)}`;
+    // Show only whole credits that are actually available to spend. Credits
+    // are stored to cents, so rounding here could display an unaffordable
+    // whole-dollar amount (for example, $2,499.99 as $2,500).
+    this.creditsDisplay.innerText = `$${Math.floor(this.game.normalizeCredits(this.game.playerCredits))}`;
     this.fpsCounter.innerText = Math.round(this.game.fps);
 
     if (this.timePhase && this.game.dayCycle) {
@@ -438,7 +441,7 @@ export class UIManager {
       const nextLevel = LEVELS[this.game.playerLevelIndex + 1];
       if (nextLevel) {
         this.upgradeLevelBtn.innerText = `UPGRADE: ${nextLevel.name.toUpperCase()} $${nextLevel.upgradeCost}`;
-        this.upgradeLevelBtn.disabled = this.game.playerCredits < nextLevel.upgradeCost || this.game.state !== 'playing';
+        this.upgradeLevelBtn.disabled = !this.game.canAffordCredits('player', nextLevel.upgradeCost) || this.game.state !== 'playing';
       } else {
         this.upgradeLevelBtn.innerText = 'MAX LEVEL';
         this.upgradeLevelBtn.disabled = true;

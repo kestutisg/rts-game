@@ -298,6 +298,34 @@ class Game {
     return LEVELS[this.getLevelIndexForFaction(faction)];
   }
 
+  normalizeCredits(amount) {
+    return Math.round((amount + Number.EPSILON) * 100) / 100;
+  }
+
+  canAffordCredits(faction, cost) {
+    const credits = faction === 'player' ? this.playerCredits : this.enemyCredits;
+    return this.normalizeCredits(credits) >= cost;
+  }
+
+  spendCredits(faction, cost) {
+    if (!this.canAffordCredits(faction, cost)) return false;
+
+    if (faction === 'player') {
+      this.playerCredits = this.normalizeCredits(this.playerCredits - cost);
+    } else {
+      this.enemyCredits = this.normalizeCredits(this.enemyCredits - cost);
+    }
+    return true;
+  }
+
+  addCredits(faction, amount) {
+    if (faction === 'player') {
+      this.playerCredits = this.normalizeCredits(this.playerCredits + amount);
+    } else {
+      this.enemyCredits = this.normalizeCredits(this.enemyCredits + amount);
+    }
+  }
+
   canUseBuilding(faction, type) {
     const def = BUILDING_DEFS[type];
     return Boolean(def) && isUnlockedAt(this.getLevelIndexForFaction(faction), def);
@@ -312,21 +340,21 @@ class Game {
     const nextLevel = LEVELS[this.playerLevelIndex + 1];
     if (!nextLevel || this.state !== 'playing') return;
 
-    if (this.playerCredits < nextLevel.upgradeCost) {
+    if (!this.canAffordCredits('player', nextLevel.upgradeCost)) {
       this.ui.setStatusText(`INSUFFICIENT CREDITS. ${nextLevel.name.toUpperCase()} LEVEL REQUIRES $${nextLevel.upgradeCost}.`);
       return;
     }
 
-    this.playerCredits -= nextLevel.upgradeCost;
+    this.spendCredits('player', nextLevel.upgradeCost);
     this.playerLevelIndex++;
     this.ui.setStatusText(`${nextLevel.name.toUpperCase()} LEVEL UNLOCKED: ${nextLevel.description}.`);
   }
 
   upgradeEnemyLevel() {
     const nextLevel = LEVELS[this.enemyLevelIndex + 1];
-    if (!nextLevel || this.enemyCredits < nextLevel.upgradeCost) return false;
+    if (!nextLevel || !this.canAffordCredits('enemy', nextLevel.upgradeCost)) return false;
 
-    this.enemyCredits -= nextLevel.upgradeCost;
+    this.spendCredits('enemy', nextLevel.upgradeCost);
     this.enemyLevelIndex++;
     return true;
   }

@@ -131,7 +131,7 @@ export class EnemyAI {
       
       activeBarracks.forEach(barracks => {
         const preferred = ['bio_rocket', 'nuke_rocket', 'plane', 'tank', 'buggy', 'motorcycle']
-          .filter(type => this.game.canUseUnit('enemy', type) && this.game.enemyCredits >= UNIT_DEFS[type].cost);
+          .filter(type => this.game.canUseUnit('enemy', type) && this.game.canAffordCredits('enemy', UNIT_DEFS[type].cost));
 
         if (preferred.length === 0) return;
 
@@ -140,19 +140,19 @@ export class EnemyAI {
         if (roll < 0.2) chosen = preferred[0];
         else if (roll < 0.55) chosen = preferred[Math.min(1, preferred.length - 1)];
 
-        this.game.enemyCredits -= UNIT_DEFS[chosen].cost;
+        if (!this.game.spendCredits('enemy', UNIT_DEFS[chosen].cost)) return;
         barracks.queueUnit(chosen);
       });
     }
 
     // --- Auxiliary Harvester check ---
-    if (hasRefinery && this.game.enemyCredits > 1200) {
+    if (hasRefinery && this.game.canAffordCredits('enemy', 1200)) {
       // Ensure AI always has at least one active harvester
       const harvesters = this.game.enemyEntities.filter(u => u.type === 'harvester' && !u.isDead);
       if (harvesters.length === 0) {
         const refinery = buildings.find(b => b.type === 'refinery');
         if (refinery && refinery.buildQueue.length === 0) {
-          this.game.enemyCredits -= 1000;
+          if (!this.game.spendCredits('enemy', 1000)) return;
           refinery.queueUnit('harvester');
         }
       }
@@ -161,7 +161,7 @@ export class EnemyAI {
 
   startBuildingDecision(type, cost, duration) {
     if (!this.game.canUseBuilding('enemy', type)) return;
-    if (this.game.enemyCredits < cost) return;
+    if (!this.game.canAffordCredits('enemy', cost)) return;
 
     // Find a valid spot close to the main Construction Yard
     const cyard = this.game.enemyEntities.find(b => b.type === 'cyard');
@@ -177,7 +177,7 @@ export class EnemyAI {
 
     const spawnTile = this.findPlacementSpot(cyard.gridX, cyard.gridY, tilesW, tilesH);
     if (spawnTile) {
-      this.game.enemyCredits -= cost;
+      if (!this.game.spendCredits('enemy', cost)) return;
       this.state = 'building';
       this.queuedBuilding = type;
       this.buildTimer = duration;
