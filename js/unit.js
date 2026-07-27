@@ -801,8 +801,23 @@ export class Harvester extends Unit {
     if (path) {
       this.path = path;
       this.pathIndex = 0;
-      this.state = 'moving';
       this.miningTargetTile = tile;
+      this.depositTargetRefinery = null;
+
+      if (path.length === 0) {
+        const tileCoords = game.grid.getTileCoords(tile.x, tile.y);
+        const tileDist = Math.hypot(tileCoords.x - this.x, tileCoords.y - this.y);
+        this.state = tileDist <= game.grid.tileSize * 2.0 ? 'mining' : 'idle';
+      } else {
+        this.state = 'moving';
+      }
+    } else {
+      // Leave the harvester recoverable if a temporary blockage prevents a
+      // route to this field. It will look for another field on the next tick.
+      this.path = [];
+      this.pathIndex = 0;
+      this.miningTargetTile = null;
+      this.state = 'idle';
     }
   }
 
@@ -838,37 +853,50 @@ export class Harvester extends Unit {
   }
 
   findRefineryAndGo(game) {
+    // A harvester must not retain its ore target while travelling to unload.
+    // Otherwise the terminal movement check can send it back into mining
+    // instead of switching to the refinery's unloading state.
+    this.miningTargetTile = null;
+
     const buildings = this.faction === 'player' ? game.playerEntities : game.enemyEntities;
     const refineries = buildings.filter(b => b.isBuilding && b.type === 'refinery' && !b.isUnderConstruction);
 
     if (refineries.length === 0) {
+      this.depositTargetRefinery = null;
       this.state = 'idle';
       this.path = [];
       return;
     }
 
-    let nearest = null;
-    let minDist = Infinity;
-    for (const ref of refineries) {
-      const dist = Math.hypot(ref.x - this.x, ref.y - this.y);
-      if (dist < minDist) {
-        minDist = dist;
-        nearest = ref;
-      }
-    }
-
     const startTile = game.grid.getTileAtWorld(this.x, this.y);
-    const endTile = game.grid.getTileAtWorld(nearest.x, nearest.y);
-    const path = game.grid.findPath(startTile, endTile, this);
+    const sortedRefineries = [...refineries].sort((a, b) => {
+      const distA = Math.hypot(a.x - this.x, a.y - this.y);
+      const distB = Math.hypot(b.x - this.x, b.y - this.y);
+      return distA - distB;
+    });
 
-    if (path) {
+    for (const refinery of sortedRefineries) {
+      const endTile = game.grid.getTileAtWorld(refinery.x, refinery.y);
+      const path = game.grid.findPath(startTile, endTile, this);
+      if (!path) continue;
+
       this.path = path;
       this.pathIndex = 0;
-      this.state = 'moving';
-      this.depositTargetRefinery = nearest;
-    } else {
-      this.state = 'idle';
+      this.depositTargetRefinery = refinery;
+
+      if (path.length === 0) {
+        const refineryDist = Math.hypot(refinery.x - this.x, refinery.y - this.y);
+        this.state = refineryDist <= game.grid.tileSize * 2.8 ? 'unloading' : 'idle';
+      } else {
+        this.state = 'moving';
+      }
+      return;
     }
+
+    this.path = [];
+    this.pathIndex = 0;
+    this.depositTargetRefinery = null;
+    this.state = 'idle';
   }
 
   updateUnloading(dt, game) {
@@ -893,6 +921,7 @@ export class Harvester extends Unit {
 
     if (this.cargo <= 0) {
       this.cargo = 0;
+      this.depositTargetRefinery = null;
       this.state = 'idle';
     }
   }
