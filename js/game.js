@@ -70,7 +70,9 @@ class Game {
     this.lastResourceGrowTime = 0;
 
     // Initialize systems
-    this.grid = new Grid(120, 120, 40);
+    // Wide rectangular battlefield: preserve the diamond cells while giving
+    // the overall layout a 16:9 footprint and the same tile count as before.
+    this.grid = new Grid(320, 180, 40);
     this.input = new InputHandler(this);
     this.ui = new UIManager(this);
     this.ai = new EnemyAI(this);
@@ -201,13 +203,16 @@ class Game {
   }
 
   setupStartingBases() {
+    const playerBase = this.getStartingBaseCoordinates('player');
+    const enemyBase = this.getStartingBaseCoordinates('enemy');
+
     // Spawn player starting structures
-    this.spawnBuilding('player', 'cyard', 8, 8, this.playerRace);
-    this.spawnBuilding('player', 'power', 8, 12, this.playerRace);
-    
+    this.spawnBuilding('player', 'cyard', playerBase.x, playerBase.y, this.playerRace);
+    this.spawnBuilding('player', 'power', playerBase.x, playerBase.y + 4, this.playerRace);
+
     // Initial units (computed isometric start points)
-    const c1 = this.grid.getTileCoords(12, 10);
-    const c2 = this.grid.getTileCoords(13, 11);
+    const c1 = this.grid.getTileCoords(playerBase.x + 4, playerBase.y + 2);
+    const c2 = this.grid.getTileCoords(playerBase.x + 5, playerBase.y + 3);
 
     const u1 = new Unit(this.generateEntityId(), 'player', 'motorcycle', c1.x, c1.y, null, null, 0, 0, this.playerRace);
     const u2 = new Unit(this.generateEntityId(), 'player', 'buggy', c2.x, c2.y, null, null, 0, 0, this.playerRace);
@@ -215,13 +220,14 @@ class Game {
     this.addUnit(u2);
 
     // Center camera on player's construction yard
-    const startCoords = this.grid.getTileCoords(8, 8);
-    this.camera.x = Math.max(0, startCoords.x - this.camera.width / 2);
-    this.camera.y = Math.max(0, startCoords.y - this.camera.height / 2);
+    const startCoords = this.grid.getTileCoords(playerBase.x, playerBase.y);
+    this.camera.x = startCoords.x - this.camera.width / 2;
+    this.camera.y = startCoords.y - this.camera.height / 2;
+    this.grid.clampCamera(this.camera);
 
     // Spawn Enemy starting structures
-    const enemyCyardX = this.grid.width - 11;
-    const enemyCyardY = this.grid.height - 11;
+    const enemyCyardX = enemyBase.x;
+    const enemyCyardY = enemyBase.y;
     this.spawnBuilding('enemy', 'cyard', enemyCyardX, enemyCyardY, this.enemyRace);
     this.spawnBuilding('enemy', 'power', enemyCyardX, enemyCyardY - 3, this.enemyRace);
 
@@ -232,6 +238,17 @@ class Game {
     const eu2 = new Unit(this.generateEntityId(), 'enemy', 'buggy', ec2.x, ec2.y, null, null, 0, 0, this.enemyRace);
     this.addUnit(eu1);
     this.addUnit(eu2);
+  }
+
+  getStartingBaseCoordinates(faction) {
+    const inset = this.grid.spawnInset;
+    if (faction === 'player') {
+      return { x: inset, y: inset };
+    }
+    return {
+      x: this.grid.width - inset - 1,
+      y: this.grid.height - inset - 1,
+    };
   }
 
   restart() {
@@ -349,9 +366,12 @@ class Game {
       normalizeRaceId(race || this.getRaceForFaction(faction))
     );
     
-    const isStartingBuilding = (gridX === 8 && gridY === 8) || (gridX === 8 && gridY === 12) || 
-                               (gridX === this.grid.width - 11 && gridY === this.grid.height - 11) ||
-                               (gridX === this.grid.width - 11 && gridY === this.grid.height - 14);
+    const playerBase = this.getStartingBaseCoordinates('player');
+    const enemyBase = this.getStartingBaseCoordinates('enemy');
+    const isStartingBuilding = (gridX === playerBase.x && gridY === playerBase.y) ||
+                               (gridX === playerBase.x && gridY === playerBase.y + 4) ||
+                               (gridX === enemyBase.x && gridY === enemyBase.y) ||
+                               (gridX === enemyBase.x && gridY === enemyBase.y - 3);
     
     if (isStartingBuilding) {
       b.isUnderConstruction = false;

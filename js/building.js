@@ -282,6 +282,23 @@ export class Building extends Entity {
     ctx.fill();
     ctx.globalAlpha = 1;
 
+    // Shared architectural pass: readable facades make the structure feel like
+    // a building instead of a single extruded tile. Individual silhouettes
+    // below still provide the faction-specific identity on top of this layer.
+    if (['cyard', 'power', 'refinery', 'barracks'].includes(this.type)) {
+      this.drawSharedFacadeDetails(
+        ctx,
+        ptLeft,
+        ptBottom,
+        ptRight,
+        roof,
+        h,
+        palette,
+        time,
+        isNod
+      );
+    }
+
     const rx = roof.centerX;
     const ry = roof.centerY;
     const roofW = roof.ptRightRoof.x - roof.ptLeftRoof.x;
@@ -310,6 +327,194 @@ export class Building extends Entity {
     }
 
     this.drawSelectionAndHP(ctx, camera, rx, ry + h * 0.3, roofW * 0.75, roofH * 1.5, game);
+  }
+
+  drawSharedFacadeDetails(ctx, ptLeft, ptBottom, ptRight, roof, h, palette, time, isNod) {
+    const leftTop = roof.ptLeftRoof;
+    const centerTop = roof.ptBottomRoof;
+    const rightTop = roof.ptRightRoof;
+
+    // Return a point on one of the two vertical front walls. `t` follows the
+    // wall from left-to-right and `v` travels from the roof down to the base.
+    const wallPoint = (topA, topB, baseA, baseB, t, v) => ({
+      x: topA.x + (topB.x - topA.x) * t,
+      y: topA.y + (topB.y - topA.y) * t + (baseA.y + (baseB.y - baseA.y) * t - (topA.y + (topB.y - topA.y) * t)) * v,
+    });
+
+    const drawWallPanel = (topA, topB, baseA, baseB, t1, t2, v1, v2, fill, stroke) => {
+      const p1 = wallPoint(topA, topB, baseA, baseB, t1, v1);
+      const p2 = wallPoint(topA, topB, baseA, baseB, t2, v1);
+      const p3 = wallPoint(topA, topB, baseA, baseB, t2, v2);
+      const p4 = wallPoint(topA, topB, baseA, baseB, t1, v2);
+
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.lineTo(p3.x, p3.y);
+      ctx.lineTo(p4.x, p4.y);
+      ctx.closePath();
+      ctx.fill();
+
+      if (stroke) {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+      }
+      return { p1, p2, p3, p4 };
+    };
+
+    const windowColor = isNod ? '#ff5266' : palette.accent;
+    const windowGlow = isNod ? 'rgba(255, 23, 68, 0.72)' : 'rgba(128, 222, 234, 0.72)';
+    const windowCount = (wallLength) => Math.max(2, Math.min(3, wallLength));
+
+    const drawFacadeWindow = (topA, topB, baseA, baseB, center, span) => {
+      const frame = drawWallPanel(
+        topA,
+        topB,
+        baseA,
+        baseB,
+        center - span,
+        center + span,
+        0.28,
+        0.61,
+        '#10181d',
+        'rgba(0, 0, 0, 0.9)'
+      );
+      const inset = drawWallPanel(
+        topA,
+        topB,
+        baseA,
+        baseB,
+        center - span * 0.7,
+        center + span * 0.7,
+        0.33,
+        0.56,
+        windowGlow,
+        null
+      );
+
+      // Mullions and a thin upper reflection keep the windows legible at
+      // normal game scale without turning them into flat bright rectangles.
+      ctx.strokeStyle = 'rgba(220, 250, 255, 0.55)';
+      ctx.lineWidth = 0.65;
+      const mullionTop = wallPoint(topA, topB, baseA, baseB, center, 0.34);
+      const mullionBottom = wallPoint(topA, topB, baseA, baseB, center, 0.55);
+      ctx.beginPath();
+      ctx.moveTo(mullionTop.x, mullionTop.y);
+      ctx.lineTo(mullionBottom.x, mullionBottom.y);
+      ctx.stroke();
+
+      ctx.strokeStyle = windowColor;
+      ctx.globalAlpha = 0.75;
+      ctx.beginPath();
+      ctx.moveTo(inset.p1.x, inset.p1.y + 0.6);
+      ctx.lineTo(inset.p2.x, inset.p2.y + 0.6);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      return frame;
+    };
+
+    const drawWindowRow = (topA, topB, baseA, baseB, count) => {
+      const span = count === 3 ? 0.075 : 0.1;
+      for (let i = 0; i < count; i++) {
+        drawFacadeWindow(topA, topB, baseA, baseB, (i + 1) / (count + 1), span);
+      }
+    };
+
+    // Windows are recessed into the two visible walls, with the wall length
+    // controlling the number of bays so larger structures gain detail.
+    drawWindowRow(leftTop, centerTop, ptLeft, ptBottom, windowCount(this.gridHeight));
+    drawWindowRow(centerTop, rightTop, ptBottom, ptRight, windowCount(this.gridWidth));
+
+    // A service entrance anchors the facade at ground level. The barracks has
+    // a larger animated roll-up door of its own, so use a compact personnel
+    // door there and let the specialized treatment sit over it.
+    const doorCenter = this.type === 'refinery' ? 0.66 : 0.5;
+    const door = drawWallPanel(
+      leftTop,
+      centerTop,
+      ptLeft,
+      ptBottom,
+      doorCenter - 0.11,
+      doorCenter + 0.11,
+      0.55,
+      0.96,
+      isNod ? '#240d13' : '#0b1216',
+      isNod ? 'rgba(255, 23, 68, 0.78)' : 'rgba(128, 222, 234, 0.55)'
+    );
+
+    // Door frame, handle light, and a small protective canopy.
+    ctx.strokeStyle = isNod ? '#ff1744' : palette.trim;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(door.p1.x, door.p1.y);
+    ctx.lineTo(door.p4.x, door.p4.y);
+    ctx.moveTo(door.p2.x, door.p2.y);
+    ctx.lineTo(door.p3.x, door.p3.y);
+    ctx.stroke();
+
+    const handle = wallPoint(leftTop, centerTop, ptLeft, ptBottom, doorCenter + 0.065, 0.78);
+    ctx.fillStyle = isNod ? '#ff5266' : '#ffab00';
+    ctx.fillRect(handle.x - 0.8, handle.y - 0.8, 1.6, 1.6);
+
+    const canopyA = wallPoint(leftTop, centerTop, ptLeft, ptBottom, doorCenter - 0.15, 0.5);
+    const canopyB = wallPoint(leftTop, centerTop, ptLeft, ptBottom, doorCenter + 0.15, 0.5);
+    ctx.strokeStyle = isNod ? '#7f0000' : '#607d8b';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(canopyA.x, canopyA.y);
+    ctx.lineTo(canopyB.x, canopyB.y);
+    ctx.stroke();
+
+    // Reinforced vertical corner posts and roof-edge highlights provide a
+    // crisp silhouette against the terrain at both day and night.
+    ctx.strokeStyle = '#10171b';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(ptLeft.x, ptLeft.y);
+    ctx.lineTo(leftTop.x, leftTop.y);
+    ctx.moveTo(ptBottom.x, ptBottom.y);
+    ctx.lineTo(centerTop.x, centerTop.y);
+    ctx.moveTo(ptRight.x, ptRight.y);
+    ctx.lineTo(rightTop.x, rightTop.y);
+    ctx.stroke();
+
+    ctx.strokeStyle = palette.trim;
+    ctx.globalAlpha = 0.58;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(leftTop.x, leftTop.y);
+    ctx.lineTo(centerTop.x, centerTop.y);
+    ctx.lineTo(rightTop.x, rightTop.y);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Small roof vents add scale and a sense of working machinery. They are
+    // intentionally subtle so the existing structure-specific props remain
+    // the visual focus.
+    const ventX = centerTop.x + (rightTop.x - centerTop.x) * 0.38;
+    const ventY = centerTop.y + (rightTop.y - centerTop.y) * 0.38 - 2;
+    ctx.fillStyle = isNod ? '#291014' : '#18242a';
+    ctx.fillRect(ventX - 4, ventY - 2, 8, 3);
+    ctx.strokeStyle = isNod ? '#7f0000' : '#607d8b';
+    ctx.lineWidth = 0.7;
+    for (let i = -2; i <= 2; i += 2) {
+      ctx.beginPath();
+      ctx.moveTo(ventX + i, ventY - 1.5);
+      ctx.lineTo(ventX + i, ventY + 0.5);
+      ctx.stroke();
+    }
+
+    // A soft animated status lamp gives the otherwise static facade a bit of
+    // life without adding another large light source.
+    const lamp = wallPoint(centerTop, rightTop, ptBottom, ptRight, 0.16, 0.72);
+    ctx.fillStyle = isNod ? '#ff1744' : '#00e5ff';
+    ctx.globalAlpha = 0.55 + Math.sin(time * 4) * 0.2;
+    ctx.beginPath();
+    ctx.arc(lamp.x, lamp.y, 1.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
   }
 
   drawBuildingDetails(ctx, rx, ry, roofW, roofH, roof, palette, time, isNod) {
@@ -868,6 +1073,45 @@ export class Building extends Entity {
     ctx.fillStyle = '#37474f';
     ctx.fillRect(rx - roofW * 0.36, ry - 22, 7, 26);
     ctx.fillRect(rx + roofW * 0.36 - 7, ry - 22, 7, 26);
+
+    // Sliding steel gate leaf with inset rails and vertical locking bars.
+    // Keeping the center panel dark preserves the readable opening between
+    // the posts while the trim catches the faction color at game scale.
+    const gateLeft = rx - roofW * 0.29;
+    const gateRight = rx + roofW * 0.29;
+    const gateTop = ry - 14;
+    const gateBottom = ry + 2;
+    ctx.fillStyle = '#172126';
+    ctx.fillRect(gateLeft, gateTop, gateRight - gateLeft, gateBottom - gateTop);
+    ctx.strokeStyle = palette.trim;
+    ctx.globalAlpha = 0.7;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(gateLeft, gateTop, gateRight - gateLeft, gateBottom - gateTop);
+    ctx.globalAlpha = 1;
+
+    ctx.strokeStyle = '#607d8b';
+    ctx.lineWidth = 1.2;
+    for (let y = gateTop + 4; y < gateBottom; y += 5) {
+      ctx.beginPath();
+      ctx.moveTo(gateLeft + 2, y);
+      ctx.lineTo(gateRight - 2, y);
+      ctx.stroke();
+    }
+    for (let i = 1; i < 5; i++) {
+      const x = gateLeft + ((gateRight - gateLeft) * i) / 5;
+      ctx.beginPath();
+      ctx.moveTo(x, gateTop + 1);
+      ctx.lineTo(x, gateBottom - 1);
+      ctx.stroke();
+    }
+
+    // Center lock housing and a tiny access indicator.
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(rx - 4, ry - 8, 8, 8);
+    ctx.strokeStyle = '#0f1416';
+    ctx.strokeRect(rx - 4, ry - 8, 8, 8);
+    ctx.fillStyle = '#00e676';
+    ctx.fillRect(rx - 1, ry - 5, 2, 2);
 
     // Hazard stripes on gate posts
     const p1 = { x: rx - roofW * 0.36, y: ry - 18 };

@@ -6,7 +6,7 @@ Choose GDI or NOD and face an AI opponent on an isometric 2.5D map. Gather ore, 
 
 ## Features
 
-- **Isometric 2.5D rendering** — 120x120 diamond tile map with depth-sorted buildings and units
+- **Isometric 2.5D rendering** — 320x180 rectangular diamond-tile map with depth-sorted buildings and units
 - **Base building** — Construction Yard, Power Plant, Ore Refinery, Motor Pool, defenses, and superweapon-era towers
 - **Unit production** — Harvesters, motorcycles, buggies, tanks, planes, nuclear rockets, and bio rockets
 - **Economy & power** — harvest ore for credits; low power slows construction and training

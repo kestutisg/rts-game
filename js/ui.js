@@ -225,11 +225,8 @@ export class UIManager {
     cam.x = worldCoords.x - cam.width / 2;
     cam.y = worldCoords.y - cam.height / 2;
 
-    // Clamp camera within isometric map boundaries
-    const limitX = this.game.grid.mapWidthPx;
-    const limitY = this.game.grid.mapHeightPx;
-    cam.x = Math.max(0, Math.min(limitX - cam.width, cam.x));
-    cam.y = Math.max(0, Math.min(limitY - cam.height, cam.y));
+    // Keep all four viewport corners over real isometric tiles.
+    this.game.grid.clampCamera(cam);
 
     if (createPing) {
       this.minimapPings.push({ x: canvasX, y: canvasY, radius: 2, alpha: 1.0 });
@@ -352,7 +349,7 @@ export class UIManager {
       return;
     }
 
-    this.game.playerCredits -= cost;
+    this.game.playerCredits = Math.round((this.game.playerCredits - cost) * 100) / 100;
     parentBuilding.queueUnit(type);
     const unitName = getRaceUnitName(this.game.playerRace, type).toUpperCase();
     this.setStatusText(`TRAINING ${unitName}... QUEUED: ${parentBuilding.buildQueue.length}`);
@@ -397,7 +394,7 @@ export class UIManager {
   update(dt) {
     this.updateSidebarBuild(dt);
 
-    this.creditsDisplay.innerText = `$${Math.floor(this.game.playerCredits)}`;
+    this.creditsDisplay.innerText = `$${Math.round(this.game.playerCredits)}`;
     this.fpsCounter.innerText = Math.round(this.game.fps);
 
     if (this.timePhase && this.game.dayCycle) {

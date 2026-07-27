@@ -29,6 +29,10 @@ export class Grid {
     this.halfW = this.isoWidth / 2;
     this.halfH = this.isoHeight / 2;
 
+    // Keep the starting bases far enough inside the isometric boundary that a
+    // full rectangular camera viewport can remain completely tile-covered.
+    this.spawnInset = Math.min(32, Math.floor(Math.min(width, height) / 4));
+
     this.mapWidthPx = (this.width + this.height) * this.halfW;
     this.mapHeightPx = (this.width + this.height) * this.halfH;
 
@@ -64,8 +68,8 @@ export class Grid {
       }
     }
 
-    this.clearSpawnArea(10, 10, 8);
-    this.clearSpawnArea(this.width - 11, this.height - 11, 8);
+    this.clearSpawnArea(this.spawnInset, this.spawnInset, 10);
+    this.clearSpawnArea(this.width - this.spawnInset - 1, this.height - this.spawnInset - 1, 10);
   }
 
   generateElevation(clusterCount = 7) {
@@ -291,6 +295,45 @@ export class Grid {
       return this.tiles[tx][yGrid];
     }
     return null;
+  }
+
+  /**
+   * Clamp a rectangular camera viewport inside the isometric map polygon.
+   * Simple axis-aligned bounds allow the viewport corners to drift outside
+   * the diamond, so this uses the four transformed map-edge inequalities.
+   */
+  clampCamera(camera) {
+    if (!camera) return camera;
+
+    const cameraWidthUnits = camera.width / this.halfW;
+    const cameraHeightUnits = camera.height / this.halfH;
+    const mapOriginX = this.height * this.halfW;
+    const edgePaddingUnits = 0.5;
+
+    // u/v are the inverse-isometric coordinates of the camera's top-left.
+    // The viewport itself occupies cameraWidthUnits x cameraHeightUnits.
+    const minV = cameraWidthUnits / 2 + edgePaddingUnits * 2;
+    const maxV = this.width + this.height - cameraWidthUnits / 2 - cameraHeightUnits - edgePaddingUnits * 2;
+    let v = camera.y / this.halfH;
+    v = Math.max(minV, Math.min(maxV, v));
+
+    // For this v, solve the lower/upper u bounds that keep all four viewport
+    // corners within a slightly inset 0 <= gridX <= width and
+    // 0 <= gridY <= height domain, avoiding boundary rounding gaps.
+    const minU = Math.max(
+      -v + edgePaddingUnits * 2,
+      v + cameraHeightUnits - this.height * 2 + edgePaddingUnits * 2
+    );
+    const maxU = Math.min(
+      this.width * 2 - cameraWidthUnits - cameraHeightUnits - v - edgePaddingUnits * 2,
+      v - cameraWidthUnits - edgePaddingUnits * 2
+    );
+    let u = (camera.x - mapOriginX) / this.halfW;
+    u = Math.max(minU, Math.min(maxU, u));
+
+    camera.x = mapOriginX + u * this.halfW;
+    camera.y = v * this.halfH;
+    return camera;
   }
 
   getTile(x, y) {

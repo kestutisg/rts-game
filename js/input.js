@@ -297,10 +297,6 @@ export class InputHandler {
   updateCamera(dt) {
     const cam = this.game.camera;
     
-    // Limits based on full isometric map boundary size
-    const limitX = this.game.grid.mapWidthPx;
-    const limitY = this.game.grid.mapHeightPx;
-
     let moveX = 0;
     let moveY = 0;
 
@@ -332,9 +328,8 @@ export class InputHandler {
       cam.x += (moveX / len) * this.panSpeed * dt;
       cam.y += (moveY / len) * this.panSpeed * dt;
 
-      // Clamp camera offsets
-      cam.x = Math.max(0, Math.min(limitX - cam.width, cam.x));
-      cam.y = Math.max(0, Math.min(limitY - cam.height, cam.y));
+      // Keep all four viewport corners over real isometric tiles.
+      this.game.grid.clampCamera(cam);
       
       this.updateWorldCoordinates();
     }
@@ -361,10 +356,7 @@ export class InputHandler {
       cam.x = targetX - cam.width / 2;
       cam.y = targetY - cam.height / 2;
 
-      const limitX = this.game.grid.mapWidthPx;
-      const limitY = this.game.grid.mapHeightPx;
-      cam.x = Math.max(0, Math.min(limitX - cam.width, cam.x));
-      cam.y = Math.max(0, Math.min(limitY - cam.height, cam.y));
+      this.game.grid.clampCamera(cam);
 
       this.updateWorldCoordinates();
       this.updateHoveredEntity();
