@@ -32,8 +32,8 @@ class Game {
     };
 
     // Economy
-    this.playerCredits = 5000;
-    this.enemyCredits = 5000;
+    this.playerCredits = 10000;
+    this.enemyCredits = 10000;
     this.playerLevelIndex = 0;
     this.enemyLevelIndex = 0;
 
@@ -139,8 +139,8 @@ class Game {
     this.enemyRace = normalizeRaceId(enemyRace);
     
     // Reset economy & levels
-    this.playerCredits = 5000;
-    this.enemyCredits = 5000;
+    this.playerCredits = 10000;
+    this.enemyCredits = 10000;
     this.playerLevelIndex = 0;
     this.enemyLevelIndex = 0;
 
@@ -252,8 +252,8 @@ class Game {
   }
 
   restart() {
-    this.playerCredits = 5000;
-    this.enemyCredits = 5000;
+    this.playerCredits = 10000;
+    this.enemyCredits = 10000;
     this.playerLevelIndex = 0;
     this.enemyLevelIndex = 0;
 
