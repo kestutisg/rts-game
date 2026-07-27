@@ -34,6 +34,11 @@ export class InputHandler {
 
   initListeners() {
     window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.game.state === 'playing' && this.game.ui.cancelSidebarBuild()) {
+        e.preventDefault();
+        return;
+      }
+
       this.keys[e.key.toLowerCase()] = true;
 
       if ((e.key === ' ' || e.key.toLowerCase() === 'h') && this.game.state === 'playing') {
@@ -105,6 +110,12 @@ export class InputHandler {
     this.canvas.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       this.updateMousePosition(e);
+
+      if (this.game.placementType) {
+        this.game.ui.cancelSidebarBuild();
+        return;
+      }
+
       this.issueCommand();
     });
   }

@@ -343,13 +343,19 @@ export class Grid {
     return null;
   }
 
-  regrowResources() {
+  regrowResources(elapsedSeconds = 5) {
+    // Depleted fields recover steadily, like Tiberian Sun's tiberium fields.
+    // The rate is intentionally slow enough that active harvesters still need
+    // to move between nearby fields, while an exhausted field is never lost.
+    const regrowthRate = 1.5;
+    const regrowthAmount = regrowthRate * Math.max(0, elapsedSeconds);
+
     for (let x = 0; x < this.width; x++) {
       for (let y = 0; y < this.height; y++) {
         const tile = this.tiles[x][y];
-        if (tile.type === 'ore' && tile.resourceAmount > 0) {
-          if (tile.resourceAmount < tile.maxResource && Math.random() < 0.05) {
-            tile.resourceAmount = Math.min(tile.maxResource, tile.resourceAmount + 5);
+        if (tile.type === 'ore') {
+          if (tile.resourceAmount < tile.maxResource) {
+            tile.resourceAmount = Math.min(tile.maxResource, tile.resourceAmount + regrowthAmount);
           }
 
           if (tile.resourceAmount > 40 && Math.random() < 0.005) {

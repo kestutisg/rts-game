@@ -820,7 +820,8 @@ export class Harvester extends Unit {
     this.miningTargetTile.resourceAmount -= actualMined;
 
     if (this.miningTargetTile.resourceAmount <= 0) {
-      this.miningTargetTile.type = 'grass';
+      // Keep the tile marked as ore so the field can recover over time.
+      this.miningTargetTile.resourceAmount = 0;
       this.miningTargetTile = null;
       this.state = 'idle';
       return;

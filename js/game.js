@@ -538,7 +538,8 @@ class Game {
 
     // 3. Tiberium resource spread tick
     if (this.currentTime - this.lastResourceGrowTime > 5.0) {
-      this.grid.regrowResources();
+      const elapsedSinceResourceTick = this.currentTime - this.lastResourceGrowTime;
+      this.grid.regrowResources(elapsedSinceResourceTick);
       this.lastResourceGrowTime = this.currentTime;
     }
 

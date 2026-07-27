@@ -9,7 +9,7 @@ Choose GDI or NOD and face an AI opponent on an isometric 2.5D map. Gather ore, 
 - **Isometric 2.5D rendering** — 320x180 rectangular diamond-tile map with depth-sorted buildings and units
 - **Base building** — Construction Yard, Power Plant, Ore Refinery, Motor Pool, defenses, and superweapon-era towers
 - **Unit production** — Harvesters, motorcycles, buggies, tanks, planes, nuclear rockets, and bio rockets
-- **Economy & power** — harvest ore for credits; low power slows construction and training
+- **Economy & power** — harvest regenerating ore fields for credits; low power slows construction and training
 - **Combat** — unit-vs-unit and unit-vs-structure combat with projectiles and health bars
 - **Pathfinding** — A* navigation around rocks and structures
 - **Enemy AI** — automated expansion, unit production, and periodic attack waves
@@ -42,6 +42,7 @@ Then open [http://localhost:8080](http://localhost:8080) in a modern browser.
 | **Left click** | Select a unit or building |
 | **Left drag** | Box-select multiple units |
 | **Right click** | Move, attack, or assign harvest orders |
+| **Escape / Cancel Building** | Cancel the active structure build or placement |
 | **Sidebar tabs** | Switch between Structures and Units |
 | **Build / Train buttons** | Queue construction or unit training |
 | **MUSIC toggle** | Enable or disable background music |
@@ -51,8 +52,9 @@ Then open [http://localhost:8080](http://localhost:8080) in a modern browser.
 1. Place your **Construction Yard** first, then add **Power Plants** before expanding.
 2. Build an **Ore Refinery** to spawn a Harvester and start earning credits from ore fields (golden tiles).
 3. Right-click ore tiles to send Harvesters mining; they return automatically to your refinery.
-4. Train combat units from the **Barracks** tab and use right-click to attack enemy forces.
-5. Watch the power bar—running low on power slows all production.
+4. Depleted ore fields slowly recover, so you can revisit old fields instead of exhausting the map.
+5. Train combat units from the **Barracks** tab and use right-click to attack enemy forces.
+6. Watch the power bar—running low on power slows all production.
 
 ### Factions
 

@@ -30,6 +30,7 @@ export class UIManager {
 
     this.tabBuildings = document.getElementById('tab-buildings');
     this.tabUnits = document.getElementById('tab-units');
+    this.cancelBuildButton = document.getElementById('cancel-build');
     this.buildingsGrid = document.getElementById('buildings-grid');
     this.unitsGrid = document.getElementById('units-grid');
 
@@ -130,6 +131,10 @@ export class UIManager {
         btn.addEventListener('click', () => this.startSidebarBuild(type, def.cost, def.duration));
       }
     });
+
+    if (this.cancelBuildButton) {
+      this.cancelBuildButton.addEventListener('click', () => this.cancelSidebarBuild());
+    }
 
     Object.keys(UNIT_DEFS).forEach(type => {
       const btn = document.getElementById(`train-${type}`);
@@ -389,10 +394,34 @@ export class UIManager {
     this.sidebarBuilding = null;
     this.sidebarProgress = 0;
     this.sidebarState = 'idle';
+    this.updateCancelBuildButton();
+  }
+
+  cancelSidebarBuild() {
+    const hasSidebarBuild = this.sidebarState !== 'idle';
+    const hasPlacement = Boolean(this.game.placementType);
+    if (!hasSidebarBuild && !hasPlacement) return false;
+
+    const buildingName = this.sidebarBuilding ? this.getBuildingName(this.sidebarBuilding) : 'BUILDING';
+    this.clearSidebarBuildVisuals();
+    this.game.placementType = null;
+    this.game.placementCost = 0;
+    this.game.ghostWTiles = 0;
+    this.game.ghostHTiles = 0;
+    document.body.style.cursor = 'default';
+    this.setStatusText(`${buildingName} BUILD CANCELLED. CREDITS UNCHANGED.`);
+    return true;
+  }
+
+  updateCancelBuildButton() {
+    if (!this.cancelBuildButton) return;
+    this.cancelBuildButton.disabled = this.game.state !== 'playing' ||
+      (this.sidebarState === 'idle' && !this.game.placementType);
   }
 
   update(dt) {
     this.updateSidebarBuild(dt);
+    this.updateCancelBuildButton();
 
     this.creditsDisplay.innerText = `$${Math.round(this.game.playerCredits)}`;
     this.fpsCounter.innerText = Math.round(this.game.fps);
