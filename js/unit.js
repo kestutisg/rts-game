@@ -41,6 +41,7 @@ export class Unit extends Entity {
     // Stealth Cloaking
     this.isStealthed = false;
     this.decloakTimer = 0;
+    this.repathTimer = 0;
   }
 
   takeDamage(amount) {
@@ -69,6 +70,10 @@ export class Unit extends Entity {
 
   update(dt, game) {
     if (this.isDead) return;
+
+    if (this.repathTimer > 0) {
+      this.repathTimer -= dt;
+    }
 
     // Update decloak timer
     if (this.decloakTimer > 0) {
@@ -185,14 +190,17 @@ export class Unit extends Entity {
         this.lastAttackTime = now;
       }
     } else {
-      if (Math.random() < 0.05) {
+      if (this.repathTimer <= 0) {
+        this.repathTimer = 1.2 + Math.random() * 0.6;
         const startTile = game.grid.getTileAtWorld(this.x, this.y);
         const endTile = game.grid.getTileAtWorld(this.combatTarget.x, this.combatTarget.y);
-        const newPath = game.grid.findPath(startTile, endTile, this);
-        if (newPath) {
-          this.path = newPath;
-          this.pathIndex = 0;
-          this.state = 'moving';
+        if (startTile && endTile) {
+          const newPath = game.grid.findPath(startTile, endTile, this);
+          if (newPath) {
+            this.path = newPath;
+            this.pathIndex = 0;
+            this.state = 'moving';
+          }
         }
       }
     }
@@ -775,23 +783,32 @@ export class Harvester extends Unit {
   }
 
   findNearestOre(game) {
-    let nearest = null;
-    let minDist = Infinity;
     const startTile = game.grid.getTileAtWorld(this.x, this.y);
     if (!startTile) return null;
 
-    for (let x = 0; x < game.grid.width; x++) {
-      for (let y = 0; y < game.grid.height; y++) {
-        const tile = game.grid.tiles[x][y];
-        if (tile.type === 'ore' && tile.resourceAmount > 0 && !tile.occupiedBy) {
-          const dist = Math.hypot(tile.x - startTile.x, tile.y - startTile.y);
-          if (dist < minDist) {
-            minDist = dist;
-            nearest = tile;
+    let nearest = null;
+    let minDist = Infinity;
+    const maxSearchRadius = 35;
+
+    for (let r = 1; r <= maxSearchRadius; r++) {
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dy = -r; dy <= r; dy++) {
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+          const tx = startTile.x + dx;
+          const ty = startTile.y + dy;
+          const tile = game.grid.getTile(tx, ty);
+          if (tile && tile.type === 'ore' && tile.resourceAmount > 0 && !tile.occupiedBy) {
+            const dist = Math.hypot(dx, dy);
+            if (dist < minDist) {
+              minDist = dist;
+              nearest = tile;
+            }
           }
         }
       }
+      if (nearest) return nearest;
     }
+
     return nearest;
   }
 

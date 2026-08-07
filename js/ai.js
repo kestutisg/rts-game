@@ -117,16 +117,28 @@ export class EnemyAI {
         this.startBuildingDecision('laser', BUILDING_DEFS.laser.cost, BUILDING_DEFS.laser.duration);
         return;
       }
-      // E. Build extra Barracks if credit reserves are high
+      // E. Build extra Barracks or Power if credit reserves are high and within limits
       if (this.game.enemyCredits > 2500) {
-        const type = Math.random() < 0.5 ? 'power' : 'barracks';
-        this.startBuildingDecision(type, BUILDING_DEFS[type].cost, BUILDING_DEFS[type].duration);
-        return;
+        const barracksCount = buildings.filter(b => b.type === 'barracks').length;
+        const powerCount = buildings.filter(b => b.type === 'power').length;
+        let type = null;
+        if (barracksCount < 3 && Math.random() < 0.5) {
+          type = 'barracks';
+        } else if (powerCount < 5) {
+          type = 'power';
+        }
+        if (type) {
+          this.startBuildingDecision(type, BUILDING_DEFS[type].cost, BUILDING_DEFS[type].duration);
+          return;
+        }
       }
     }
 
     // --- Unit Training Decisions ---
-    if (hasBarracks) {
+    const totalEnemyUnits = this.game.enemyEntities.filter(u => !u.isBuilding && !u.isDead).length;
+    const MAX_UNITS = 50;
+
+    if (hasBarracks && totalEnemyUnits < MAX_UNITS) {
       const activeBarracks = buildings.filter(b => b.type === 'barracks' && b.buildQueue.length === 0);
       
       activeBarracks.forEach(barracks => {
@@ -146,7 +158,7 @@ export class EnemyAI {
     }
 
     // --- Auxiliary Harvester check ---
-    if (hasRefinery && this.game.canAffordCredits('enemy', 1200)) {
+    if (hasRefinery && totalEnemyUnits < MAX_UNITS && this.game.canAffordCredits('enemy', 1200)) {
       // Ensure AI always has at least one active harvester
       const harvesters = this.game.enemyEntities.filter(u => u.type === 'harvester' && !u.isDead);
       if (harvesters.length === 0) {

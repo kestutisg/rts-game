@@ -166,6 +166,7 @@ class Game {
 
     this.grid.generateMap();
     this.setupStartingBases();
+    if (this.ui) this.ui.offscreenMinimapDirty = true;
     
     this.state = 'playing';
     this.currentTime = 0;
@@ -279,6 +280,7 @@ class Game {
 
     this.grid.generateMap();
     this.setupStartingBases();
+    if (this.ui) this.ui.offscreenMinimapDirty = true;
     
     // Hide game-over overlay
     document.getElementById('game-over-overlay').classList.add('hidden');

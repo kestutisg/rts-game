@@ -6,6 +6,7 @@
 
 import { BUILDING_DEFS, LEVELS, UNIT_DEFS } from './tech.js';
 import { applyRaceBuildingStats, getRace, getRaceBuildingName, getRaceUnitName } from './races.js';
+import { BIOMES, getMinimapGroundColor } from './biomes.js';
 
 export class UIManager {
   constructor(game) {
@@ -27,6 +28,8 @@ export class UIManager {
     this.upgradeLevelBtn = document.getElementById('upgrade-level');
     this.statusText = document.getElementById('status-text');
     this.minimapCanvas = document.getElementById('minimap-canvas');
+    this.offscreenMinimapCanvas = null;
+    this.offscreenMinimapDirty = true;
 
     this.tabBuildings = document.getElementById('tab-buildings');
     this.tabUnits = document.getElementById('tab-units');
@@ -347,6 +350,12 @@ export class UIManager {
       return;
     }
 
+    const currentPlayerUnits = this.game.playerEntities.filter(e => !e.isBuilding && !e.isDead).length;
+    if (currentPlayerUnits >= 50) {
+      this.setStatusText("POPULATION LIMIT REACHED (MAX 50 UNITS).");
+      return;
+    }
+
     const cost = def.cost;
 
     if (!this.game.canAffordCredits('player', cost)) {
@@ -556,7 +565,60 @@ export class UIManager {
     return getRaceBuildingName(raceId, type).toUpperCase();
   }
 
+  renderMinimapTerrainCache() {
+    if (!this.minimapCanvas || !this.game.grid) return;
+
+    if (!this.offscreenMinimapCanvas) {
+      this.offscreenMinimapCanvas = document.createElement('canvas');
+    }
+    if (this.offscreenMinimapCanvas.width !== this.minimapCanvas.width ||
+        this.offscreenMinimapCanvas.height !== this.minimapCanvas.height) {
+      this.offscreenMinimapCanvas.width = this.minimapCanvas.width;
+      this.offscreenMinimapCanvas.height = this.minimapCanvas.height;
+    }
+
+    const ctx = this.offscreenMinimapCanvas.getContext('2d');
+    const mapW = this.game.grid.width;
+    const mapH = this.game.grid.height;
+    const cellW = this.offscreenMinimapCanvas.width / mapW;
+    const cellH = this.offscreenMinimapCanvas.height / mapH;
+
+    ctx.fillStyle = '#060a0c';
+    ctx.fillRect(0, 0, this.offscreenMinimapCanvas.width, this.offscreenMinimapCanvas.height);
+
+    // Render static terrain
+    for (let x = 0; x < mapW; x++) {
+      for (let y = 0; y < mapH; y++) {
+        const tile = this.game.grid.tiles[x][y];
+        if (tile.type === 'water') {
+          const isIce = tile.biome === BIOMES.polar;
+          ctx.fillStyle = tile.waterVariant === 'waterfall'
+            ? (isIce ? '#a8c8dc' : '#2196f3')
+            : tile.waterVariant === 'river'
+              ? (isIce ? '#98b8cc' : '#1565c0')
+              : (isIce ? '#88a8bc' : '#0d47a1');
+          ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
+        } else if (tile.type === 'rock') {
+          ctx.fillStyle = tile.biome === BIOMES.dry ? '#5a5040'
+            : tile.biome === BIOMES.polar ? '#788890' : '#455a64';
+          ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
+        } else if (tile.type === 'ore') {
+          ctx.fillStyle = '#00e676';
+          ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
+        } else if (tile.type === 'grass') {
+          ctx.fillStyle = getMinimapGroundColor(tile.biome, tile.elevation);
+          ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
+        }
+      }
+    }
+    this.offscreenMinimapDirty = false;
+  }
+
   drawMinimap() {
+    if (this.offscreenMinimapDirty || !this.offscreenMinimapCanvas) {
+      this.renderMinimapTerrainCache();
+    }
+
     const ctx = this.minimapCanvas.getContext('2d');
     const mapW = this.game.grid.width;
     const mapH = this.game.grid.height;
@@ -564,32 +626,7 @@ export class UIManager {
     const cellW = this.minimapCanvas.width / mapW;
     const cellH = this.minimapCanvas.height / mapH;
 
-    ctx.fillStyle = '#060a0c';
-    ctx.fillRect(0, 0, this.minimapCanvas.width, this.minimapCanvas.height);
-
-    // Draw terrain
-    for (let x = 0; x < mapW; x++) {
-      for (let y = 0; y < mapH; y++) {
-        const tile = this.game.grid.tiles[x][y];
-        if (tile.type === 'water') {
-          ctx.fillStyle = tile.waterVariant === 'waterfall' ? '#2196f3' :
-                          tile.waterVariant === 'river' ? '#1565c0' : '#0d47a1';
-          ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
-        } else if (tile.elevation === 2) {
-          ctx.fillStyle = '#37474f';
-          ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
-        } else if (tile.elevation === 1) {
-          ctx.fillStyle = '#263238';
-          ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
-        } else if (tile.type === 'rock') {
-          ctx.fillStyle = '#455a64';
-          ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
-        } else if (tile.type === 'ore') {
-          ctx.fillStyle = '#00e676';
-          ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
-        }
-      }
-    }
+    ctx.drawImage(this.offscreenMinimapCanvas, 0, 0);
 
     // Draw Entities (flat representations inside tactical matrix)
     const drawDots = (entities, color) => {

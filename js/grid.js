@@ -4,17 +4,85 @@
  * coordinate conversions, rendering, and pathfinding.
  */
 
+import {
+  BIOMES,
+  getBiomeForY,
+  GROUND_PALETTES,
+  ROCK_PALETTES,
+  isWaterAllowed,
+} from './biomes.js';
+
 export class Tile {
   constructor(x, y, type = 'grass') {
     this.x = x;
     this.y = y;
     this.type = type; // 'grass', 'rock', 'ore', 'water'
+    this.biome = BIOMES.temperate; // 'temperate', 'dry', 'polar'
     this.waterVariant = null; // 'lake', 'river', 'waterfall'
     this.elevation = 0; // 0 = flat, 1 = hill, 2 = peak
     this.resourceAmount = 0;
     this.maxResource = 100;
     this.walkable = type === 'grass' || type === 'ore';
     this.occupiedBy = null;
+  }
+}
+
+class PriorityQueue {
+  constructor() {
+    this.elements = [];
+  }
+  push(element, priority) {
+    this.elements.push({ element, priority });
+    this.bubbleUp(this.elements.length - 1);
+  }
+  pop() {
+    if (this.elements.length === 0) return null;
+    const top = this.elements[0].element;
+    const bottom = this.elements.pop();
+    if (this.elements.length > 0) {
+      this.elements[0] = bottom;
+      this.sinkDown(0);
+    }
+    return top;
+  }
+  isEmpty() {
+    return this.elements.length === 0;
+  }
+  bubbleUp(n) {
+    const element = this.elements[n];
+    while (n > 0) {
+      const parentN = Math.floor((n + 1) / 2) - 1;
+      const parent = this.elements[parentN];
+      if (element.priority >= parent.priority) break;
+      this.elements[parentN] = element;
+      this.elements[n] = parent;
+      n = parentN;
+    }
+  }
+  sinkDown(n) {
+    const length = this.elements.length;
+    const element = this.elements[n];
+    while (true) {
+      const child2N = (n + 1) * 2;
+      const child1N = child2N - 1;
+      let swap = null;
+      if (child1N < length) {
+        const child1 = this.elements[child1N];
+        if (child1.priority < element.priority) {
+          swap = child1N;
+        }
+      }
+      if (child2N < length) {
+        const child2 = this.elements[child2N];
+        if (child2.priority < (swap === null ? element.priority : this.elements[child1N].priority)) {
+          swap = child2N;
+        }
+      }
+      if (swap === null) break;
+      this.elements[n] = this.elements[swap];
+      this.elements[swap] = element;
+      n = swap;
+    }
   }
 }
 
@@ -51,11 +119,13 @@ export class Grid {
       }
     }
 
+    this.assignBiomes();
     this.generateElevation(scaledCount(7));
     this.generateLakes(scaledCount(4), 5, 0.55);
     this.generateRivers(scaledCount(2));
     this.markWaterfalls();
     this.createClusters(scaledCount(12), 'rock', 3, 0.4);
+    this.scatterDryRocks();
     this.createClusters(scaledCount(8), 'ore', 4, 0.65);
 
     for (let x = 0; x < this.width; x++) {
@@ -70,6 +140,27 @@ export class Grid {
 
     this.clearSpawnArea(this.spawnInset, this.spawnInset, 10);
     this.clearSpawnArea(this.width - this.spawnInset - 1, this.height - this.spawnInset - 1, 10);
+  }
+
+  assignBiomes() {
+    for (let x = 0; x < this.width; x++) {
+      for (let y = 0; y < this.height; y++) {
+        this.tiles[x][y].biome = getBiomeForY(y, this.height);
+      }
+    }
+  }
+
+  scatterDryRocks() {
+    for (let x = 0; x < this.width; x++) {
+      for (let y = 0; y < this.height; y++) {
+        const tile = this.tiles[x][y];
+        if (tile.biome !== BIOMES.dry || tile.type !== 'grass') continue;
+        if (Math.random() < 0.07) {
+          tile.type = 'rock';
+          tile.walkable = false;
+        }
+      }
+    }
   }
 
   generateElevation(clusterCount = 7) {
@@ -127,7 +218,7 @@ export class Grid {
   setWaterTile(x, y, variant) {
     if (x < 0 || x >= this.width || y < 0 || y >= this.height) return;
     const tile = this.tiles[x][y];
-    if (tile.type === 'rock') return;
+    if (!isWaterAllowed(tile.biome) || tile.type === 'rock') return;
 
     tile.type = 'water';
     tile.waterVariant = variant;
@@ -266,6 +357,7 @@ export class Grid {
         if (tx >= 0 && tx < this.width && ty >= 0 && ty < this.height) {
           const tile = this.tiles[tx][ty];
           tile.type = 'grass';
+          tile.biome = BIOMES.temperate;
           tile.waterVariant = null;
           tile.elevation = 0;
           tile.walkable = true;
@@ -391,6 +483,7 @@ export class Grid {
 
   findPath(startTile, endTile, unit = null) {
     if (!startTile || !endTile) return null;
+    if (startTile === endTile) return [];
 
     if (!endTile.walkable && endTile.occupiedBy !== unit) {
       const neighbors = this.getNeighbors(endTile);
@@ -407,16 +500,19 @@ export class Grid {
       }
     }
 
-    const openSet = [startTile];
+    if (startTile === endTile) return [];
+
+    const openHeap = new PriorityQueue();
     const cameFrom = new Map();
     const gScore = new Map();
-    gScore.set(startTile, 0);
-    const fScore = new Map();
-    fScore.set(startTile, this.heuristic(startTile, endTile));
+    const closedSet = new Set();
 
-    while (openSet.length > 0) {
-      openSet.sort((a, b) => (fScore.get(a) ?? Infinity) - (fScore.get(b) ?? Infinity));
-      const current = openSet.shift();
+    gScore.set(startTile, 0);
+    openHeap.push(startTile, this.heuristic(startTile, endTile));
+
+    let maxNodes = 500;
+    while (!openHeap.isEmpty() && maxNodes-- > 0) {
+      const current = openHeap.pop();
 
       if (current === endTile) {
         const path = [];
@@ -428,7 +524,12 @@ export class Grid {
         return path.reverse();
       }
 
+      if (closedSet.has(current)) continue;
+      closedSet.add(current);
+
       for (const neighbor of this.getNeighbors(current)) {
+        if (closedSet.has(neighbor)) continue;
+
         const occupant = neighbor.occupiedBy;
         const isFriendlyGate = occupant?.isBuilding && occupant.def?.isGate && (!unit || occupant.faction === unit.faction);
         const isOccupied = occupant && occupant !== unit && neighbor !== endTile && !isFriendlyGate;
@@ -442,8 +543,7 @@ export class Grid {
         if (tentativeGScore < (gScore.get(neighbor) ?? Infinity)) {
           cameFrom.set(neighbor, current);
           gScore.set(neighbor, tentativeGScore);
-          fScore.set(neighbor, tentativeGScore + this.heuristic(neighbor, endTile));
-          if (!openSet.includes(neighbor)) openSet.push(neighbor);
+          openHeap.push(neighbor, tentativeGScore + this.heuristic(neighbor, endTile));
         }
       }
     }
@@ -511,11 +611,8 @@ export class Grid {
     const elevOff = this.getElevationOffset(tile.elevation);
     const syE = sy - elevOff;
 
-    const grassColors = [
-      { top: '#101518', edge: '#182025' },
-      { top: '#141c20', edge: '#1c2830' },
-      { top: '#182428', edge: '#223038' },
-    ];
+    const biomeKey = tile.biome || BIOMES.temperate;
+    const grassColors = GROUND_PALETTES[biomeKey] || GROUND_PALETTES.temperate;
     const pal = grassColors[tile.elevation];
 
     if (tile.elevation > 0) {
@@ -523,8 +620,8 @@ export class Grid {
       this.drawElevatedBlock(
         ctx, sx, sy, h,
         dayCycle.tintColor(pal.top, ambient),
-        dayCycle.tintColor('#121820', ambient),
-        dayCycle.tintColor('#1a2228', ambient),
+        dayCycle.tintColor(pal.sideDark, ambient),
+        dayCycle.tintColor(pal.sideLight, ambient),
         dayCycle.tintColor(pal.edge, ambient)
       );
     } else {
@@ -539,19 +636,27 @@ export class Grid {
     const elevOff = this.getElevationOffset(tile.elevation);
     const syE = sy - elevOff;
     const pulse = Math.sin(time * 2.5 + tile.x * 0.4 + tile.y * 0.3) * 0.5 + 0.5;
+    const isIce = tile.biome === BIOMES.polar;
 
-    const lakeTop = dayCycle.tintColor('#0a2848', ambient);
-    const lakeEdge = dayCycle.tintColor('#143858', ambient);
-    const riverTop = dayCycle.tintColor('#0c3058', ambient);
-    const riverEdge = dayCycle.tintColor('#185070', ambient);
+    const lakeTop = dayCycle.tintColor(isIce ? '#c8dce8' : '#0a2848', ambient);
+    const lakeEdge = dayCycle.tintColor(isIce ? '#a8c0d0' : '#143858', ambient);
+    const riverTop = dayCycle.tintColor(isIce ? '#b8d0e0' : '#0c3058', ambient);
+    const riverEdge = dayCycle.tintColor(isIce ? '#98b4c8' : '#185070', ambient);
 
     if (tile.waterVariant === 'lake') {
       this.drawDiamond(ctx, sx, syE, lakeTop, lakeEdge);
 
-      ctx.fillStyle = `rgba(80, 180, 255, ${0.08 + pulse * 0.06})`;
-      ctx.beginPath();
-      ctx.ellipse(sx, syE, this.halfW * 0.55, this.halfH * 0.45, 0, 0, Math.PI * 2);
-      ctx.fill();
+      if (!isIce) {
+        ctx.fillStyle = `rgba(80, 180, 255, ${0.08 + pulse * 0.06})`;
+        ctx.beginPath();
+        ctx.ellipse(sx, syE, this.halfW * 0.55, this.halfH * 0.45, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = `rgba(255, 255, 255, ${0.12 + pulse * 0.08})`;
+        ctx.beginPath();
+        ctx.ellipse(sx, syE, this.halfW * 0.45, this.halfH * 0.35, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
     } else if (tile.waterVariant === 'waterfall') {
       const dropH = 18 + (tile.waterfallDrop || 1) * 12;
 
@@ -615,20 +720,22 @@ export class Grid {
           this.drawGrassTile(ctx, sx, sy, tile, amb, dc);
         } else if (tile.type === 'rock') {
           const h = 18;
+          const rockPal = ROCK_PALETTES[tile.biome] || ROCK_PALETTES.temperate;
           this.drawElevatedBlock(
             ctx, sx, sy, h,
-            dc.tintColor('#303a42', amb),
-            dc.tintColor('#181e22', amb),
-            dc.tintColor('#22292f', amb),
-            dc.tintColor('#414d57', amb)
+            dc.tintColor(rockPal.top, amb),
+            dc.tintColor(rockPal.left, amb),
+            dc.tintColor(rockPal.right, amb),
+            dc.tintColor(rockPal.edge, amb)
           );
         } else if (tile.type === 'ore') {
           const elevOff = this.getElevationOffset(tile.elevation);
           const syE = sy - elevOff;
+          const groundPal = (GROUND_PALETTES[tile.biome] || GROUND_PALETTES.temperate)[tile.elevation];
 
           this.drawDiamond(ctx, sx, syE,
-            dc.tintColor('#0f1715', amb),
-            dc.tintColor('#1c2e24', amb)
+            dc.tintColor(groundPal.top, amb),
+            dc.tintColor(groundPal.edge, amb)
           );
 
           const ratio = tile.resourceAmount / tile.maxResource;
