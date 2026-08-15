@@ -141,6 +141,67 @@ export class Grid {
 
     this.clearSpawnArea(this.spawnInset, this.spawnInset, 10);
     this.clearSpawnArea(this.width - this.spawnInset - 1, this.height - this.spawnInset - 1, 10);
+
+    // Random water and rock generation must never seal the route between the
+    // two starting bases. Keep the natural map when it is already connected,
+    // and only carve a small fallback corridor when it is not.
+    this.ensureBasePath();
+  }
+
+  getBasePathEndpoints() {
+    return {
+      start: this.getTile(this.spawnInset, this.spawnInset),
+      end: this.getTile(this.width - this.spawnInset - 1, this.height - this.spawnInset - 1),
+    };
+  }
+
+  ensureBasePath() {
+    const { start, end } = this.getBasePathEndpoints();
+    if (!start || !end) return;
+
+    if (this.findPath(start, end)) return;
+
+    // Clear a three-tile-wide Bresenham corridor. The overlapping 3x3 brush
+    // keeps diagonal and cardinal sections connected for the same 8-direction
+    // movement used by A*.
+    let x = start.x;
+    let y = start.y;
+    const dx = Math.abs(end.x - start.x);
+    const sx = start.x < end.x ? 1 : -1;
+    const dy = -Math.abs(end.y - start.y);
+    const sy = start.y < end.y ? 1 : -1;
+    let error = dx + dy;
+
+    while (true) {
+      this.clearPathBrush(x, y);
+      if (x === end.x && y === end.y) break;
+
+      const doubledError = 2 * error;
+      if (doubledError >= dy) {
+        error += dy;
+        x += sx;
+      }
+      if (doubledError <= dx) {
+        error += dx;
+        y += sy;
+      }
+    }
+  }
+
+  clearPathBrush(centerX, centerY) {
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const tile = this.getTile(centerX + dx, centerY + dy);
+        if (!tile) continue;
+
+        tile.type = 'grass';
+        tile.waterVariant = null;
+        tile.waterfallDrop = 0;
+        tile.elevation = 0;
+        tile.walkable = true;
+        tile.resourceAmount = 0;
+      }
+    }
   }
 
   assignBiomes() {
@@ -511,7 +572,10 @@ export class Grid {
     gScore.set(startTile, 0);
     openHeap.push(startTile, this.heuristic(startTile, endTile));
 
-    let maxNodes = 500;
+    // The starting bases are far apart on the wide battlefield. Allow the
+    // search to explore enough of the map to find a valid route around terrain
+    // instead of failing solely because of the old fixed 500-node cap.
+    let maxNodes = Math.max(500, Math.min(this.width * this.height, 5000));
     while (!openHeap.isEmpty() && maxNodes-- > 0) {
       const current = openHeap.pop();
 
