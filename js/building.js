@@ -872,68 +872,181 @@ export class Building extends Entity {
 
   drawBarracksDetails(ctx, rx, ry, roofW, roofH, palette, time, isNod) {
     if (isNod) {
-      // HAND OF NOD (Iconic Nod Infantry / Vehicle Spire)
-      // Dark stealth base temple
-      ctx.fillStyle = '#141414';
-      ctx.fillRect(rx - 16, ry - 8, 32, 16);
-      ctx.strokeStyle = palette.primary;
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(rx - 16, ry - 8, 32, 16);
+      // HAND OF NOD — a black, armored hand rising from a red-lit temple.
+      // The silhouette is deliberately built from filled shapes so the five
+      // digits remain readable at the game's normal zoom level.
+      ctx.save();
 
-      // Red Glowing Entrance Portal / Blast Door
-      ctx.fillStyle = '#800000';
-      ctx.fillRect(rx - 7, ry + 2, 14, 8);
-      ctx.fillStyle = '#ff1744';
-      ctx.fillRect(rx - 5, ry + 4, 10, 6);
-
-      // TOWERING HAND OF NOD GAUNTLET REACHING SKYWARD!
-      // Wrist / Base
-      ctx.fillStyle = '#1c1c1c';
-      ctx.fillRect(rx - 8, ry - 22, 16, 14);
-
-      // 4 Armor-Clawed Fingers & Palm holding Glowing Red Orb
-      ctx.strokeStyle = '#2d2d2d';
-      ctx.lineWidth = 2.5;
-
-      // Finger claws extending up and inward around orb
+      // Low plinth and recessed infantry deployment door.
+      ctx.fillStyle = '#0c0d0e';
       ctx.beginPath();
-      // Outer Left Finger
-      ctx.moveTo(rx - 8, ry - 22);
-      ctx.lineTo(rx - 12, ry - 36);
-      ctx.lineTo(rx - 6, ry - 44);
-      // Inner Left Finger
-      ctx.moveTo(rx - 4, ry - 22);
-      ctx.lineTo(rx - 6, ry - 38);
-      ctx.lineTo(rx - 2, ry - 46);
-      // Inner Right Finger
-      ctx.moveTo(rx + 4, ry - 22);
-      ctx.lineTo(rx + 6, ry - 38);
-      ctx.lineTo(rx + 2, ry - 46);
-      // Outer Right Finger
-      ctx.moveTo(rx + 8, ry - 22);
-      ctx.lineTo(rx + 12, ry - 36);
-      ctx.lineTo(rx + 6, ry - 44);
+      ctx.moveTo(rx - 26, ry + 8);
+      ctx.lineTo(rx - 20, ry - 9);
+      ctx.lineTo(rx + 20, ry - 9);
+      ctx.lineTo(rx + 26, ry + 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#4f1118';
+      ctx.lineWidth = 1.3;
       ctx.stroke();
 
-      // Glowing Red Orb held in the palm of the Hand!
+      ctx.fillStyle = '#300b11';
+      ctx.fillRect(rx - 10, ry - 1, 20, 10);
+      ctx.strokeStyle = '#9e1b2b';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(rx - 10, ry - 1, 20, 10);
+      ctx.fillStyle = '#ff1744';
+      ctx.globalAlpha = 0.7 + Math.sin(time * 6) * 0.2;
+      ctx.fillRect(rx - 7, ry + 2, 14, 3);
+      ctx.globalAlpha = 1;
+
+      // Tapered armored wrist. The red side panels give the silhouette a
+      // hard, sculpted edge instead of looking like a floating icon.
+      ctx.fillStyle = '#17191b';
+      ctx.beginPath();
+      ctx.moveTo(rx - 13, ry - 4);
+      ctx.lineTo(rx - 10, ry - 30);
+      ctx.lineTo(rx + 10, ry - 30);
+      ctx.lineTo(rx + 13, ry - 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#070809';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = '#60111a';
+      ctx.beginPath();
+      ctx.moveTo(rx - 10, ry - 27);
+      ctx.lineTo(rx - 6, ry - 29);
+      ctx.lineTo(rx - 6, ry - 6);
+      ctx.lineTo(rx - 11, ry - 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(rx + 10, ry - 27);
+      ctx.lineTo(rx + 6, ry - 29);
+      ctx.lineTo(rx + 6, ry - 6);
+      ctx.lineTo(rx + 11, ry - 8);
+      ctx.closePath();
+      ctx.fill();
+
+      // Draw a digit as a dark armored tube with a narrow crimson edge. The
+      // joints and pointed tips make each finger distinct at small scale.
+      const drawDigit = (points, width, tip) => {
+        ctx.strokeStyle = '#08090a';
+        ctx.lineWidth = width + 4;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(rx + points[0][0], ry + points[0][1]);
+        for (let i = 1; i < points.length; i++) {
+          ctx.lineTo(rx + points[i][0], ry + points[i][1]);
+        }
+        ctx.stroke();
+
+        ctx.strokeStyle = '#25282b';
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        ctx.moveTo(rx + points[0][0], ry + points[0][1]);
+        for (let i = 1; i < points.length; i++) {
+          ctx.lineTo(rx + points[i][0], ry + points[i][1]);
+        }
+        ctx.stroke();
+
+        ctx.strokeStyle = '#8f1828';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(rx + points[0][0] - 0.8, ry + points[0][1] - 1);
+        for (let i = 1; i < points.length; i++) {
+          ctx.lineTo(rx + points[i][0] - 0.8, ry + points[i][1] - 1);
+        }
+        ctx.stroke();
+
+        const last = points[points.length - 1];
+        const previous = points[points.length - 2];
+        const length = Math.hypot(last[0] - previous[0], last[1] - previous[1]) || 1;
+        const nx = (last[0] - previous[0]) / length;
+        const ny = (last[1] - previous[1]) / length;
+        ctx.fillStyle = '#08090a';
+        ctx.beginPath();
+        ctx.moveTo(rx + last[0] + nx * tip, ry + last[1] + ny * tip);
+        ctx.lineTo(rx + last[0] - ny * 3, ry + last[1] + nx * 3);
+        ctx.lineTo(rx + last[0] + ny * 3, ry + last[1] - nx * 3);
+        ctx.closePath();
+        ctx.fill();
+      };
+
+      // Thumb, index, middle, ring, and little finger curl inward around the
+      // orb, matching the iconic raised-hand silhouette.
+      drawDigit([[-8, -25], [-19, -30], [-25, -40], [-23, -47]], 7, 5);
+      drawDigit([[-7, -28], [-14, -41], [-15, -56], [-11, -64]], 8, 5);
+      drawDigit([[-3, -29], [-6, -44], [-4, -61], [0, -70]], 8.5, 5);
+      drawDigit([[4, -29], [7, -44], [11, -58], [15, -65]], 8, 5);
+      drawDigit([[9, -25], [18, -35], [22, -47], [21, -55]], 6.5, 5);
+
+      // Palm armor overlaps the digit roots, visually joining the fingers to
+      // the wrist instead of leaving five separate floating strokes.
+      ctx.fillStyle = '#1b1d1f';
+      ctx.beginPath();
+      ctx.moveTo(rx - 12, ry - 29);
+      ctx.lineTo(rx - 16, ry - 38);
+      ctx.lineTo(rx - 9, ry - 45);
+      ctx.lineTo(rx, ry - 42);
+      ctx.lineTo(rx + 10, ry - 45);
+      ctx.lineTo(rx + 16, ry - 36);
+      ctx.lineTo(rx + 11, ry - 27);
+      ctx.lineTo(rx + 10, ry - 13);
+      ctx.lineTo(rx - 10, ry - 13);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#070809';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Knuckle plates and palm seams add the segmented, industrial look of a
+      // Nod production building without obscuring the hand silhouette.
+      ctx.fillStyle = '#4d1119';
+      for (const [x, y, w] of [[-10, -37, 5], [-4, -40, 5], [4, -40, 5], [10, -36, 5]]) {
+        ctx.fillRect(rx + x - w / 2, ry + y, w, 2.5);
+      }
+      ctx.strokeStyle = '#8f1828';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(rx - 7, ry - 27);
+      ctx.lineTo(rx - 3, ry - 17);
+      ctx.lineTo(rx + 4, ry - 15);
+      ctx.lineTo(rx + 8, ry - 27);
+      ctx.stroke();
+
+      // The red power orb sits in the palm and gives the structure an
+      // unmistakable focal point, like the original Hand of Nod artwork.
       const pulse = 0.5 + Math.sin(time * 5) * 0.4;
       ctx.save();
       ctx.shadowColor = '#ff1744';
-      ctx.shadowBlur = 14 * pulse;
+      ctx.shadowBlur = 16 * pulse;
       ctx.fillStyle = `rgba(255, 23, 68, ${0.65 + 0.35 * pulse})`;
       ctx.beginPath();
-      ctx.arc(rx, ry - 38, 5, 0, Math.PI * 2);
+      ctx.arc(rx, ry - 34, 5.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
 
-      // Nod Emblem on temple base
+      ctx.strokeStyle = 'rgba(255, 125, 140, 0.8)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(rx - 1, ry - 35, 3.5, Math.PI * 1.1, Math.PI * 1.8);
+      ctx.stroke();
+
+      // Nod emblem on the temple plinth.
       ctx.fillStyle = palette.primary;
       ctx.beginPath();
-      ctx.moveTo(rx, ry - 6);
-      ctx.lineTo(rx + 4, ry - 2);
-      ctx.lineTo(rx - 4, ry - 2);
+      ctx.moveTo(rx, ry - 7);
+      ctx.lineTo(rx + 5, ry - 2);
+      ctx.lineTo(rx, ry + 1);
+      ctx.lineTo(rx - 5, ry - 2);
       ctx.closePath();
       ctx.fill();
+
+      ctx.restore();
       return;
     }
 
