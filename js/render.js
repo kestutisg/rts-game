@@ -1,5 +1,5 @@
 /**
- * Shared isometric rendering helpers for Tiberian Odyssey
+ * Shared 2.5D rendering helpers for Tiberian Odyssey
  */
 
 import { getRacePalette as racePalette } from './races.js';
@@ -311,4 +311,3 @@ export function drawRadarDish(ctx, x, y, radius, time, color = '#90a4ae') {
 
   ctx.restore();
 }
-

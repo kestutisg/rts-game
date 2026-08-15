@@ -1,5 +1,5 @@
 /**
- * UI Manager for Tiberian Odyssey (Isometric 2.5D Upgrade)
+ * UI Manager for Tiberian Odyssey (Staggered 2.5D Upgrade)
  * Handles HUD bindings, building placements, music state updates,
  * radar network projection, and dynamic hovering tooltips.
  */
@@ -211,6 +211,65 @@ export class UIManager {
     });
   }
 
+  getMinimapLayout() {
+    const canvasWidth = this.minimapCanvas.width;
+    const canvasHeight = this.minimapCanvas.height;
+    const mapAspect = this.game.grid.width / this.game.grid.height;
+    const padding = 4;
+    const availableWidth = Math.max(1, canvasWidth - padding * 2);
+    const availableHeight = Math.max(1, canvasHeight - padding * 2);
+
+    let width = availableWidth;
+    let height = width / mapAspect;
+    if (height > availableHeight) {
+      height = availableHeight;
+      width = height * mapAspect;
+    }
+
+    return {
+      x: (canvasWidth - width) / 2,
+      y: (canvasHeight - height) / 2,
+      width,
+      height,
+      cellWidth: width / this.game.grid.width,
+      cellHeight: height / this.game.grid.height,
+    };
+  }
+
+  getMinimapGridPosition(gridX, gridY, layout, tileCenter = false) {
+    const offset = tileCenter ? 0.5 : 0;
+    const rowOffset = Math.abs(Math.floor(gridY)) % 2 === 1 ? 0.5 : 0;
+    const mapColumns = this.game.grid.width + 0.5;
+    return {
+      x: layout.x + ((gridX + offset + rowOffset) / mapColumns) * layout.width,
+      y: layout.y + ((gridY + offset) / this.game.grid.height) * layout.height,
+    };
+  }
+
+  getGridPositionAtWorld(worldX, worldY) {
+    const grid = this.game.grid;
+    const tile = grid.getTileAtWorld(worldX, worldY);
+    if (tile) return { x: tile.x, y: tile.y };
+
+    return {
+      x: Math.round((worldX - grid.mapOriginX) / grid.tileWidth),
+      y: Math.round(worldY / grid.halfH) - 1,
+    };
+  }
+
+  getMinimapEntityPosition(entity, layout) {
+    if (entity.isBuilding) {
+      return this.getMinimapGridPosition(
+        entity.gridX + entity.gridWidth / 2,
+        entity.gridY + entity.gridHeight / 2,
+        layout
+      );
+    }
+
+    const gridPosition = this.getGridPositionAtWorld(entity.x, entity.y);
+    return this.getMinimapGridPosition(gridPosition.x, gridPosition.y, layout, true);
+  }
+
   jumpCameraToMinimap(e, createPing = false) {
     if (!this.minimapCanvas || !this.game.grid) return;
 
@@ -222,19 +281,24 @@ export class UIManager {
 
     const canvasX = (mouseX / rect.width) * this.minimapCanvas.width;
     const canvasY = (mouseY / rect.height) * this.minimapCanvas.height;
+    const layout = this.getMinimapLayout();
 
-    const normX = canvasX / this.minimapCanvas.width;
-    const normY = canvasY / this.minimapCanvas.height;
+    // The radar uses the same staggered row coordinates as the battlefield,
+    // so clicks are converted through tile coordinates before becoming world points.
+    const normX = Math.max(0, Math.min(1, (canvasX - layout.x) / layout.width));
+    const normY = Math.max(0, Math.min(1, (canvasY - layout.y) / layout.height));
 
-    const targetWorldX = normX * this.game.grid.mapWidthPx;
-    const targetWorldY = normY * this.game.grid.mapHeightPx;
+    const targetWorld = this.game.grid.getTileCoords(
+      normX * this.game.grid.width,
+      normY * this.game.grid.height
+    );
 
     const cam = this.game.camera;
 
-    cam.x = targetWorldX - cam.width / 2;
-    cam.y = targetWorldY - cam.height / 2;
+    cam.x = targetWorld.x - cam.width / 2;
+    cam.y = targetWorld.y - cam.height / 2;
 
-    // Keep all four viewport corners over real isometric tiles.
+    // Keep the viewport inside the staggered ground plane.
     this.game.grid.clampCamera(cam);
 
     if (createPing) {
@@ -583,21 +647,20 @@ export class UIManager {
     const mapH = this.game.grid.height;
     const mw = this.offscreenMinimapCanvas.width;
     const mh = this.offscreenMinimapCanvas.height;
-    const mapWidthPx = this.game.grid.mapWidthPx;
-    const mapHeightPx = this.game.grid.mapHeightPx;
-    const tileW = Math.max(1.8, (this.game.grid.isoWidth / mapWidthPx) * mw);
-    const tileH = Math.max(1.8, (this.game.grid.isoHeight / mapHeightPx) * mh);
+    const layout = this.getMinimapLayout();
+    const tileW = layout.cellWidth;
+    const tileH = layout.cellHeight;
 
     ctx.fillStyle = '#060a0c';
     ctx.fillRect(0, 0, mw, mh);
 
-    // Render static terrain at isometric world positions
+    // Render terrain in the same staggered row layout used by the main view.
     for (let x = 0; x < mapW; x++) {
       for (let y = 0; y < mapH; y++) {
         const tile = this.game.grid.tiles[x][y];
-        const coords = this.game.grid.getTileCoords(x, y);
-        const mx = (coords.x / mapWidthPx) * mw;
-        const my = (coords.y / mapHeightPx) * mh;
+        const point = this.getMinimapGridPosition(x, y, layout);
+        const mx = point.x;
+        const my = point.y;
 
         if (tile.type === 'water') {
           const isIce = tile.biome === BIOMES.polar;
@@ -606,17 +669,17 @@ export class UIManager {
             : tile.waterVariant === 'river'
               ? (isIce ? '#98b8cc' : '#1565c0')
               : (isIce ? '#88a8bc' : '#0d47a1');
-          ctx.fillRect(mx - tileW / 2, my - tileH / 2, tileW, tileH);
+          ctx.fillRect(mx, my, tileW + 0.5, tileH + 0.5);
         } else if (tile.type === 'rock') {
           ctx.fillStyle = tile.biome === BIOMES.dry ? '#5a5040'
             : tile.biome === BIOMES.polar ? '#788890' : '#455a64';
-          ctx.fillRect(mx - tileW / 2, my - tileH / 2, tileW, tileH);
+          ctx.fillRect(mx, my, tileW + 0.5, tileH + 0.5);
         } else if (tile.type === 'ore') {
           ctx.fillStyle = '#00e676';
-          ctx.fillRect(mx - tileW / 2, my - tileH / 2, tileW, tileH);
+          ctx.fillRect(mx, my, tileW + 0.5, tileH + 0.5);
         } else if (tile.type === 'grass') {
           ctx.fillStyle = getMinimapGroundColor(tile.biome, tile.elevation);
-          ctx.fillRect(mx - tileW / 2, my - tileH / 2, tileW, tileH);
+          ctx.fillRect(mx, my, tileW + 0.5, tileH + 0.5);
         }
       }
     }
@@ -629,13 +692,14 @@ export class UIManager {
     }
 
     const ctx = this.minimapCanvas.getContext('2d');
-    const mapW = this.game.grid.width;
-    const mapH = this.game.grid.height;
-    
-    const cellW = this.minimapCanvas.width / mapW;
-    const cellH = this.minimapCanvas.height / mapH;
+    const layout = this.getMinimapLayout();
 
     ctx.drawImage(this.offscreenMinimapCanvas, 0, 0);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(layout.x, layout.y, layout.width, layout.height);
+    ctx.clip();
 
     // Draw Entities (flat representations inside tactical matrix)
     const drawDots = (entities, color) => {
@@ -643,12 +707,13 @@ export class UIManager {
       entities.forEach(ent => {
         if (ent.isDead) return;
 
-        const mx = (ent.x / this.game.grid.mapWidthPx) * this.minimapCanvas.width;
-        const my = (ent.y / this.game.grid.mapHeightPx) * this.minimapCanvas.height;
+        const position = this.getMinimapEntityPosition(ent, layout);
+        const mx = position.x;
+        const my = position.y;
 
         if (ent.isBuilding) {
-          const bw = Math.max(3, (ent.gridWidth * this.game.grid.isoWidth / this.game.grid.mapWidthPx) * this.minimapCanvas.width);
-          const bh = Math.max(3, (ent.gridHeight * this.game.grid.isoHeight / this.game.grid.mapHeightPx) * this.minimapCanvas.height);
+          const bw = Math.max(3, (ent.gridWidth / this.game.grid.width) * layout.width);
+          const bh = Math.max(3, (ent.gridHeight / this.game.grid.height) * layout.height);
           ctx.fillRect(mx - bw / 2, my - bh / 2, bw, bh);
         } else {
           ctx.fillRect(mx - 1.5, my - 1.5, 3, 3);
@@ -665,9 +730,9 @@ export class UIManager {
     // Rotating Radar Sweep Line
     const time = this.game.currentTime || (Date.now() / 1000);
     const sweepAngle = time * 2.0;
-    const cx = this.minimapCanvas.width / 2;
-    const cy = this.minimapCanvas.height / 2;
-    const radius = Math.hypot(cx, cy);
+    const cx = layout.x + layout.width / 2;
+    const cy = layout.y + layout.height / 2;
+    const radius = Math.hypot(layout.width, layout.height);
 
     ctx.save();
     ctx.strokeStyle = 'rgba(79, 195, 247, 0.25)';
@@ -698,22 +763,31 @@ export class UIManager {
       }
     }
 
-    // Draw projected Camera Viewport on minimap
+    // Draw the camera's world-space viewport as its staggered tile-space
+    // bounds. This stays aligned with the staggered radar terrain.
     const cam = this.game.camera;
-    const normCamX = cam.x / this.game.grid.mapWidthPx;
-    const normCamY = cam.y / this.game.grid.mapHeightPx;
-    const normCamW = cam.width / this.game.grid.mapWidthPx;
-    const normCamH = cam.height / this.game.grid.mapHeightPx;
+    const cameraCorners = [
+      this.getGridPositionAtWorld(cam.x, cam.y),
+      this.getGridPositionAtWorld(cam.x + cam.width, cam.y),
+      this.getGridPositionAtWorld(cam.x, cam.y + cam.height),
+      this.getGridPositionAtWorld(cam.x + cam.width, cam.y + cam.height),
+    ];
+    const minGridX = Math.max(0, Math.min(...cameraCorners.map(point => point.x)));
+    const maxGridX = Math.min(this.game.grid.width, Math.max(...cameraCorners.map(point => point.x)));
+    const minGridY = Math.max(0, Math.min(...cameraCorners.map(point => point.y)));
+    const maxGridY = Math.min(this.game.grid.height, Math.max(...cameraCorners.map(point => point.y)));
 
-    const cvx = normCamX * this.minimapCanvas.width;
-    const cvy = normCamY * this.minimapCanvas.height;
-    const cvw = normCamW * this.minimapCanvas.width;
-    const cvh = normCamH * this.minimapCanvas.height;
+    const cvx = layout.x + (minGridX / this.game.grid.width) * layout.width;
+    const cvy = layout.y + (minGridY / this.game.grid.height) * layout.height;
+    const cvw = ((maxGridX - minGridX) / this.game.grid.width) * layout.width;
+    const cvh = ((maxGridY - minGridY) / this.game.grid.height) * layout.height;
 
     ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
     ctx.fillRect(cvx, cvy, cvw, cvh);
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(cvx, cvy, cvw, cvh);
+
+    ctx.restore();
   }
 }

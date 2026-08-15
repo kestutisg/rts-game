@@ -1,6 +1,6 @@
 /**
- * Grid & Pathfinding Manager for Tiberian Odyssey (Isometric 2.5D Upgrade)
- * Handles isometric projection, terrain generation (elevation, water),
+ * Grid & Pathfinding Manager for Tiberian Odyssey (Staggered 2.5D Upgrade)
+ * Handles staggered diamond projection, terrain generation (elevation, water),
  * coordinate conversions, rendering, and pathfinding.
  */
 
@@ -93,17 +93,21 @@ export class Grid {
     this.height = height;
     this.tileSize = tileSize;
 
-    this.isoWidth = this.tileSize * 2;
-    this.isoHeight = this.tileSize;
-    this.halfW = this.isoWidth / 2;
-    this.halfH = this.isoHeight / 2;
+    // Diamond cells are laid out in staggered horizontal rows. Every other
+    // row shifts by half a cell, preserving the 2.5D/isometric silhouette
+    // while keeping the logical y axis visually horizontal across the map.
+    this.tileWidth = this.tileSize * 2;
+    this.tileHeight = this.tileSize;
+    this.halfW = this.tileWidth / 2;
+    this.halfH = this.tileHeight / 2;
+    this.mapOriginX = this.halfW;
 
-    // Keep the starting bases far enough inside the isometric boundary that a
-    // full rectangular camera viewport can remain completely tile-covered.
+    // Keep the starting bases far enough inside the staggered boundary that a
+    // full camera viewport can remain completely tile-covered.
     this.spawnInset = Math.min(32, Math.floor(Math.min(width, height) / 4));
 
-    this.mapWidthPx = (this.width + this.height) * this.halfW;
-    this.mapHeightPx = (this.width + this.height) * this.halfH;
+    this.mapWidthPx = this.width * this.tileWidth + this.halfW;
+    this.mapHeightPx = (this.height + 1) * this.halfH;
 
     this.generateMap();
   }
@@ -434,59 +438,54 @@ export class Grid {
   }
 
   getTileCoords(x, y) {
-    const worldX = (x - y) * this.halfW + this.height * this.halfW;
-    const worldY = (x + y) * this.halfH;
+    const rowOffset = Math.abs(Math.floor(y)) % 2 === 1 ? this.halfW : 0;
+    const worldX = this.mapOriginX + x * this.tileWidth + rowOffset;
+    const worldY = (y + 1) * this.halfH;
     return { x: worldX, y: worldY };
   }
 
-  getTileAtWorld(worldX, worldY) {
-    const U = (worldX - this.height * this.halfW) / this.halfW;
-    const V = worldY / this.halfH;
-    const tx = Math.floor((V + U) / 2);
-    const yGrid = Math.floor((V - U) / 2);
-
-    if (tx >= 0 && tx < this.width && yGrid >= 0 && yGrid < this.height) {
-      return this.tiles[tx][yGrid];
-    }
-    return null;
+  getTileCornerCoords(x, y) {
+    return {
+      x: this.mapOriginX + x * this.tileWidth + (Math.abs(Math.floor(y)) % 2 === 1 ? this.halfW : 0),
+      y: y * this.halfH,
+    };
   }
 
-  /**
-   * Clamp a rectangular camera viewport inside the isometric map polygon.
-   * Simple axis-aligned bounds allow the viewport corners to drift outside
-   * the diamond, so this uses the four transformed map-edge inequalities.
-   */
+  getTileAtWorld(worldX, worldY) {
+    const approxY = Math.floor(worldY / this.halfH) - 1;
+    let closest = null;
+    let closestDistance = Infinity;
+
+    for (let y = approxY - 1; y <= approxY + 1; y++) {
+      if (y < 0 || y >= this.height) continue;
+      const rowOffset = y % 2 === 1 ? this.halfW : 0;
+      const approxX = Math.round((worldX - this.mapOriginX - rowOffset) / this.tileWidth);
+
+      for (let x = approxX - 1; x <= approxX + 1; x++) {
+        if (x < 0 || x >= this.width) continue;
+        const tile = this.tiles[x][y];
+        const coords = this.getTileCoords(x, y);
+        const distance = Math.abs(worldX - coords.x) / this.halfW +
+          Math.abs(worldY - coords.y) / this.halfH;
+
+        if (distance <= 1.001 && distance < closestDistance) {
+          closest = tile;
+          closestDistance = distance;
+        }
+      }
+    }
+
+    return closest;
+  }
+
+  /** Clamp a rectangular camera viewport inside the staggered map bounds. */
   clampCamera(camera) {
     if (!camera) return camera;
 
-    const cameraWidthUnits = camera.width / this.halfW;
-    const cameraHeightUnits = camera.height / this.halfH;
-    const mapOriginX = this.height * this.halfW;
-    const edgePaddingUnits = 0.5;
-
-    // u/v are the inverse-isometric coordinates of the camera's top-left.
-    // The viewport itself occupies cameraWidthUnits x cameraHeightUnits.
-    const minV = cameraWidthUnits / 2 + edgePaddingUnits * 2;
-    const maxV = this.width + this.height - cameraWidthUnits / 2 - cameraHeightUnits - edgePaddingUnits * 2;
-    let v = camera.y / this.halfH;
-    v = Math.max(minV, Math.min(maxV, v));
-
-    // For this v, solve the lower/upper u bounds that keep all four viewport
-    // corners within a slightly inset 0 <= gridX <= width and
-    // 0 <= gridY <= height domain, avoiding boundary rounding gaps.
-    const minU = Math.max(
-      -v + edgePaddingUnits * 2,
-      v + cameraHeightUnits - this.height * 2 + edgePaddingUnits * 2
-    );
-    const maxU = Math.min(
-      this.width * 2 - cameraWidthUnits - cameraHeightUnits - v - edgePaddingUnits * 2,
-      v - cameraWidthUnits - edgePaddingUnits * 2
-    );
-    let u = (camera.x - mapOriginX) / this.halfW;
-    u = Math.max(minU, Math.min(maxU, u));
-
-    camera.x = mapOriginX + u * this.halfW;
-    camera.y = v * this.halfH;
+    const maxX = Math.max(0, this.mapWidthPx - camera.width);
+    const maxY = Math.max(0, this.mapHeightPx - camera.height);
+    camera.x = Math.max(0, Math.min(maxX, camera.x));
+    camera.y = Math.max(0, Math.min(maxY, camera.y));
     return camera;
   }
 
@@ -623,7 +622,7 @@ export class Grid {
     return dx < dy ? F * dx + dy : F * dy + dx;
   }
 
-  drawDiamond(ctx, sx, sy, fill, stroke, lineWidth = 0.5) {
+  drawGroundTile(ctx, sx, sy, fill, stroke, lineWidth = 0.5) {
     ctx.fillStyle = fill;
     ctx.beginPath();
     ctx.moveTo(sx, sy - this.halfH);
@@ -640,30 +639,37 @@ export class Grid {
   }
 
   drawElevatedBlock(ctx, sx, sy, h, topColor, leftColor, rightColor, edgeColor) {
+    const left = sx - this.halfW;
+    const right = sx + this.halfW;
+    const roofLeft = left;
+    const roofRight = right;
+    const roofTop = sy - this.halfH - h;
+    const roofSideY = sy - h;
+
     ctx.fillStyle = leftColor;
     ctx.beginPath();
-    ctx.moveTo(sx - this.halfW, sy);
+    ctx.moveTo(left, sy);
     ctx.lineTo(sx, sy + this.halfH);
     ctx.lineTo(sx, sy + this.halfH - h);
-    ctx.lineTo(sx - this.halfW, sy - h);
+    ctx.lineTo(left, sy - h);
     ctx.closePath();
     ctx.fill();
 
     ctx.fillStyle = rightColor;
     ctx.beginPath();
     ctx.moveTo(sx, sy + this.halfH);
-    ctx.lineTo(sx + this.halfW, sy);
-    ctx.lineTo(sx + this.halfW, sy - h);
+    ctx.lineTo(right, sy);
+    ctx.lineTo(right, sy - h);
     ctx.lineTo(sx, sy + this.halfH - h);
     ctx.closePath();
     ctx.fill();
 
     ctx.fillStyle = topColor;
     ctx.beginPath();
-    ctx.moveTo(sx, sy - this.halfH - h);
-    ctx.lineTo(sx + this.halfW, sy - h);
+    ctx.moveTo(sx, roofTop);
+    ctx.lineTo(roofRight, roofSideY);
     ctx.lineTo(sx, sy + this.halfH - h);
-    ctx.lineTo(sx - this.halfW, sy - h);
+    ctx.lineTo(roofLeft, roofSideY);
     ctx.closePath();
     ctx.fill();
 
@@ -690,7 +696,7 @@ export class Grid {
         dayCycle.tintColor(pal.edge, ambient)
       );
     } else {
-      this.drawDiamond(ctx, sx, syE,
+      this.drawGroundTile(ctx, sx, syE,
         dayCycle.tintColor(pal.top, ambient),
         dayCycle.tintColor(pal.edge, ambient)
       );
@@ -709,7 +715,7 @@ export class Grid {
     const riverEdge = dayCycle.tintColor(isIce ? '#98b4c8' : '#185070', ambient);
 
     if (tile.waterVariant === 'lake') {
-      this.drawDiamond(ctx, sx, syE, lakeTop, lakeEdge);
+      this.drawGroundTile(ctx, sx, syE, lakeTop, lakeEdge);
 
       if (!isIce) {
         ctx.fillStyle = `rgba(80, 180, 255, ${0.08 + pulse * 0.06})`;
@@ -725,7 +731,7 @@ export class Grid {
     } else if (tile.waterVariant === 'waterfall') {
       const dropH = 18 + (tile.waterfallDrop || 1) * 12;
 
-      this.drawDiamond(ctx, sx, syE, riverTop, riverEdge);
+      this.drawGroundTile(ctx, sx, syE, riverTop, riverEdge);
 
       const grad = ctx.createLinearGradient(sx, syE - dropH, sx, syE + this.halfH);
       grad.addColorStop(0, `rgba(180, 220, 255, ${0.55 + pulse * 0.2})`);
@@ -748,7 +754,7 @@ export class Grid {
       }
     } else {
       // River
-      this.drawDiamond(ctx, sx, syE, riverTop, riverEdge);
+      this.drawGroundTile(ctx, sx, syE, riverTop, riverEdge);
 
       const flowOffset = (time * 40 + tile.x * 12 + tile.y * 8) % 24;
       ctx.strokeStyle = `rgba(100, 200, 255, ${0.25 + pulse * 0.15})`;
@@ -798,7 +804,7 @@ export class Grid {
           const syE = sy - elevOff;
           const groundPal = (GROUND_PALETTES[tile.biome] || GROUND_PALETTES.temperate)[tile.elevation];
 
-          this.drawDiamond(ctx, sx, syE,
+          this.drawGroundTile(ctx, sx, syE,
             dc.tintColor(groundPal.top, amb),
             dc.tintColor(groundPal.edge, amb)
           );

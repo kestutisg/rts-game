@@ -70,8 +70,8 @@ class Game {
     this.lastResourceGrowTime = 0;
 
     // Initialize systems
-    // Wide rectangular battlefield: preserve the diamond cells while giving
-    // the overall layout a 16:9 footprint and the same tile count as before.
+    // Wide battlefield with staggered diamond rows and height-based 2.5D
+    // terrain/building extrusion.
     this.grid = new Grid(320, 180, 40);
     this.ai = new EnemyAI(this);
     this.input = new InputHandler(this);
@@ -213,7 +213,7 @@ class Game {
     this.spawnBuilding('player', 'cyard', playerBase.x, playerBase.y, this.playerRace);
     this.spawnBuilding('player', 'power', playerBase.x, playerBase.y + 4, this.playerRace);
 
-    // Initial units (computed isometric start points)
+    // Initial units (computed staggered-grid start points)
     const c1 = this.grid.getTileCoords(playerBase.x + 4, playerBase.y + 2);
     const c2 = this.grid.getTileCoords(playerBase.x + 5, playerBase.y + 3);
 
@@ -725,7 +725,7 @@ class Game {
       this.ctx.stroke();
     });
 
-    // 3. Draw Building Placement Ghost directly in isometric projection
+    // 3. Draw the classic diamond-shaped building placement ghost
     if (this.placementType) {
       const tile = this.grid.getTileAtWorld(this.input.worldMouseX, this.input.worldMouseY);
       if (tile) {
@@ -733,7 +733,17 @@ class Game {
         
         // Floor corners of ghost
         const getScreenCoords = (gx, gy) => {
-          const coords = this.grid.getTileCoords(gx, gy);
+          const halfW = this.grid.halfW;
+          const halfH = this.grid.halfH;
+          const rowOffset = Math.abs(Math.floor(tile.y)) % 2 === 1 ? halfW : 0;
+          const originX = this.grid.mapOriginX + tile.x * this.grid.tileWidth + rowOffset;
+          const originY = tile.y * halfH;
+          const localX = gx - tile.x;
+          const localY = gy - tile.y;
+          const coords = {
+            x: originX + (localX - localY) * halfW,
+            y: originY + (localX + localY) * halfH,
+          };
           return { x: coords.x - this.camera.x, y: coords.y - this.camera.y };
         };
 

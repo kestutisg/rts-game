@@ -2,11 +2,11 @@
 
 A browser-based real-time strategy skirmish game inspired by classic C&C-style gameplay. Built with vanilla HTML, CSS, and JavaScript (ES modules)—no build step or dependencies required.
 
-Choose GDI or NOD and face an AI opponent on an isometric 2.5D map. Gather ore, expand your base, manage power, train an army, and destroy the enemy before they destroy you.
+Choose GDI or NOD and face an AI opponent on a staggered 2.5D map. Gather ore, expand your base, manage power, train an army, and destroy the enemy before they destroy you.
 
 ## Features
 
-- **Isometric 2.5D rendering** — 320x180 rectangular diamond-tile map with depth-sorted buildings and units
+- **Staggered 2.5D rendering** — 320x180 diamond-cell grid with half-cell row offsets, elevated terrain, and depth-sorted buildings and units
 - **Base building** — Construction Yard, Power Plant, Ore Refinery, Motor Pool, defenses, and superweapon-era towers
 - **Unit production** — Harvesters, motorcycles, buggies, tanks, planes, nuclear rockets, and bio rockets
 - **Economy & power** — harvest regenerating ore fields for credits; low power slows construction and training
@@ -69,7 +69,7 @@ rts-game/
 ├── style.css           # UI styling
 └── js/
     ├── game.js         # Main loop, camera, economy, win/loss
-    ├── grid.js         # Isometric map, rendering, A* pathfinding
+    ├── grid.js         # Staggered 2.5D map, rendering, A* pathfinding
     ├── input.js        # Mouse/keyboard input and unit commands
     ├── ui.js           # HUD, sidebar, minimap, tooltips
     ├── building.js     # Structure types and construction

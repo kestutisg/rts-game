@@ -35,6 +35,7 @@ export class Building extends Entity {
     this.gridY = gridY;
     this.gridWidth = gridWidth;
     this.gridHeight = gridHeight;
+    this.tileSize = tileSize;
     this.mapHeight = mapHeight;
     this.isBuilding = true;
     this.height3D = buildingHeight;
@@ -42,15 +43,21 @@ export class Building extends Entity {
     this.powerProduction = powerProd;
     this.powerUsage = powerUse;
     
-    // Isometric metrics to pre-calculate world coordinates
+    // Keep the original diamond footprint for structures. The terrain grid is
+    // staggered, but buildings still use the classic diamond silhouette that
+    // gives them their readable 2.5D shape.
     const halfW = tileSize;
     const halfH = tileSize / 2;
-
-    // Calculate center world coordinates for selection overlays and AI targeting
-    this.x = (gridX - gridY) * halfW + this.mapHeight * halfW + (gridWidth - gridHeight) * halfW / 2;
-    this.y = (gridX + gridY) * halfH + (gridWidth + gridHeight) * halfH / 2;
+    const footprintCorners = [
+      this.getTileCoordsLocal(gridX, gridY),
+      this.getTileCoordsLocal(gridX + gridWidth, gridY),
+      this.getTileCoordsLocal(gridX + gridWidth, gridY + gridHeight),
+      this.getTileCoordsLocal(gridX, gridY + gridHeight),
+    ];
+    this.x = footprintCorners.reduce((sum, point) => sum + point.x, 0) / footprintCorners.length;
+    this.y = footprintCorners.reduce((sum, point) => sum + point.y, 0) / footprintCorners.length;
     
-    this.widthPx = gridWidth * tileSize * 2; // bounding size for selection ellipses
+    this.widthPx = gridWidth * tileSize * 2;
     this.heightPx = gridHeight * tileSize;
     
     this.isUnderConstruction = true;
@@ -1454,10 +1461,18 @@ export class Building extends Entity {
   }
 
   getTileCoordsLocal(x, y) {
-    const halfW = 40; // tile width = 80, half = 40
-    const halfH = 20; // tile height = 40, half = 20
-    const worldX = (x - y) * halfW + this.mapHeight * halfW;
-    const worldY = (x + y) * halfH;
-    return { x: worldX, y: worldY };
+    const halfW = this.tileSize;
+    const halfH = this.tileSize / 2;
+    const rowOffset = Math.abs(Math.floor(this.gridY)) % 2 === 1 ? halfW : 0;
+    const originX = halfW + this.gridX * halfW * 2 + rowOffset;
+    const originY = this.gridY * halfH;
+    const localX = x - this.gridX;
+    const localY = y - this.gridY;
+
+    // Anchor the diamond at the top vertex of the starting terrain cell.
+    return {
+      x: originX + (localX - localY) * halfW,
+      y: originY + (localX + localY) * halfH,
+    };
   }
 }

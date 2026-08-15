@@ -199,11 +199,14 @@ function renderCardBackground(type, isBuilding, race) {
     b.selected = false;
 
     // Building center coordinates
-    const halfW = 40;
-    const halfH = 20;
-    const mapH = 10;
-    const worldCenterX = (b.gridWidth - b.gridHeight) * halfW / 2 + mapH * halfW;
-    const worldCenterY = (b.gridWidth + b.gridHeight) * halfH / 2;
+    const previewCorners = [
+      b.getTileCoordsLocal(0, 0),
+      b.getTileCoordsLocal(b.gridWidth, 0),
+      b.getTileCoordsLocal(b.gridWidth, b.gridHeight),
+      b.getTileCoordsLocal(0, b.gridHeight),
+    ];
+    const worldCenterX = previewCorners.reduce((sum, point) => sum + point.x, 0) / previewCorners.length;
+    const worldCenterY = previewCorners.reduce((sum, point) => sum + point.y, 0) / previewCorners.length;
 
     // Adjust vertical offset based on building height and size for optimal framing
     let yOffset = b.height3D * 0.45;

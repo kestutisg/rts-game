@@ -16,7 +16,11 @@ export const CLIMATE_BANDS = {
 };
 
 export function getBiomeForTile(x, y, width, height) {
-  const t = (x + y) / Math.max(1, width + height - 2);
+  // Climate bands follow the map's vertical grid axis. Using x + y here
+  // rotates the bands diagonally, which makes the rectangular radar show
+  // polar terrain only in opposite corners instead of across its top/bottom
+  // edges.
+  const t = y / Math.max(1, height - 1);
   const { polar, dry } = CLIMATE_BANDS;
 
   if (t < polar || t > 1 - polar) return BIOMES.polar;

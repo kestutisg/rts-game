@@ -1,6 +1,6 @@
 /**
- * Input Handler for Tiberian Odyssey (Isometric 2.5D Upgrade)
- * Manages screen-to-isometric coordinate translations, group drag selections,
+ * Input Handler for Tiberian Odyssey (Staggered 2.5D Upgrade)
+ * Manages screen-to-grid coordinate translations, group drag selections,
  * unit orders, and hover entity tracking.
  */
 
@@ -140,7 +140,7 @@ export class InputHandler {
   }
 
   updateHoveredEntity() {
-    // Find hovered grid tile in isometric coordinates
+    // Find hovered grid tile in staggered world coordinates
     const tile = this.game.grid.getTileAtWorld(this.worldMouseX, this.worldMouseY);
     if (tile && tile.occupiedBy) {
       const ent = tile.occupiedBy;
@@ -342,7 +342,7 @@ export class InputHandler {
       cam.x += (moveX / len) * this.panSpeed * dt;
       cam.y += (moveY / len) * this.panSpeed * dt;
 
-      // Keep all four viewport corners over real isometric tiles.
+      // Keep the viewport inside the staggered ground plane.
       this.game.grid.clampCamera(cam);
       
       this.updateWorldCoordinates();

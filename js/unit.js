@@ -140,7 +140,7 @@ export class Unit extends Entity {
     }
 
     const currentTargetTile = this.path[this.pathIndex];
-    // Retrieve isometric coordinates of the destination tile
+    // Retrieve staggered world coordinates of the destination tile
     const coords = game.grid.getTileCoords(currentTargetTile.x, currentTargetTile.y);
     const targetWorldX = coords.x;
     const targetWorldY = coords.y;
@@ -957,7 +957,7 @@ export class Harvester extends Unit {
 
     this.angle = Math.atan2(dy, dx);
 
-    // Adjacent checks in isometric space
+    // Adjacent checks in logical grid space
     if (this.miningTargetTile && this.pathIndex === this.path.length - 1) {
       const tileCoords = game.grid.getTileCoords(this.miningTargetTile.x, this.miningTargetTile.y);
       const tileDist = Math.hypot(tileCoords.x - this.x, tileCoords.y - this.y);
