@@ -249,7 +249,7 @@ export class Unit extends Entity {
 
     // Stealth check
     const isEnemy = this.faction === 'enemy';
-    const detected = game ? game.isEntityDetected(this, 'player') : true;
+    const detected = typeof game?.isEntityDetected === 'function' ? game.isEntityDetected(this, 'player') : true;
     if (this.isStealthed && isEnemy && !detected) {
       return; // Invisible
     }
@@ -991,7 +991,7 @@ export class Harvester extends Unit {
   draw(ctx, camera, game = null) {
     // Stealth check
     const isEnemy = this.faction === 'enemy';
-    const detected = game ? game.isEntityDetected(this, 'player') : true;
+    const detected = typeof game?.isEntityDetected === 'function' ? game.isEntityDetected(this, 'player') : true;
     if (this.isStealthed && isEnemy && !detected) {
       return; // Invisible
     }

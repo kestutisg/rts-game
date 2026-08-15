@@ -7,6 +7,7 @@
 import { BUILDING_DEFS, LEVELS, UNIT_DEFS } from './tech.js';
 import { applyRaceBuildingStats, getRace, getRaceBuildingName, getRaceUnitName } from './races.js';
 import { BIOMES, getMinimapGroundColor } from './biomes.js';
+import { updateAllCardBackgrounds } from './card-art.js';
 
 export class UIManager {
   constructor(game) {
@@ -98,6 +99,9 @@ export class UIManager {
       if (nameEl) nameEl.innerText = getRaceUnitName(this.game.playerRace, type);
       btn.title = `${getRaceUnitName(this.game.playerRace, type)}: ${UNIT_DEFS[type].name}`;
     });
+
+    // Update dynamic background card artwork matching player race
+    updateAllCardBackgrounds(this.game.playerRace);
   }
 
   updateFactionTheme(raceId) {

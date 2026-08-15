@@ -346,58 +346,115 @@ body, html {
 
 .build-card {
   position: relative;
-  height: 80px;
-  background: oklch(0.08 0.01 200 / 0.8);
+  height: 86px;
+  background-color: #0c1015;
   border: 1px solid var(--panel-border);
-  border-radius: 4px;
-  padding: 8px;
+  border-radius: 6px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   cursor: pointer;
   text-align: left;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* Background schematic artwork */
+.build-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--card-bg, none);
+  background-size: cover;
+  background-position: center right;
+  background-repeat: no-repeat;
+  transition: transform 0.35s cubic-bezier(0.25, 1, 0.5, 1), filter 0.3s ease;
+  z-index: 0;
+  opacity: 0.95;
+}
+
+/* High-contrast gradient scrim to ensure text readability */
+.build-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(8, 12, 18, 0.95) 0%,
+    rgba(8, 12, 18, 0.82) 42%,
+    rgba(8, 12, 18, 0.22) 78%,
+    rgba(8, 12, 18, 0.35) 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+.build-card > * {
+  position: relative;
+  z-index: 2;
 }
 
 .build-card:hover:not(:disabled) {
   border-color: var(--accent-cyan);
-  box-shadow: 0 0 8px var(--accent-cyan-glow);
-  background: oklch(0.12 0.02 200 / 0.8);
+  box-shadow: 0 0 14px var(--accent-cyan-glow), inset 0 0 10px rgba(0, 229, 255, 0.15);
+}
+
+.build-card:hover:not(:disabled)::before {
+  transform: scale(1.08);
+  filter: brightness(1.18) contrast(1.05);
+}
+
+.build-card:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .build-card:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
+  filter: grayscale(0.65) brightness(0.65);
   cursor: not-allowed;
 }
 
 .build-card.ready-to-place {
-  border-color: var(--accent-green);
-  box-shadow: 0 0 10px var(--accent-green-glow);
-  animation: pulse-ready 1.5s infinite alternate;
+  border-color: var(--accent-green) !important;
+  box-shadow: 0 0 16px var(--accent-green-glow), inset 0 0 12px rgba(0, 230, 118, 0.2) !important;
+  animation: pulse-ready 1.4s infinite alternate;
 }
 
 @keyframes pulse-ready {
-  0% { border-color: oklch(0.8 0.22 142 / 0.6); }
-  100% { border-color: var(--accent-green); }
+  0% { 
+    border-color: rgba(0, 230, 118, 0.6); 
+    box-shadow: 0 0 8px rgba(0, 230, 118, 0.4);
+  }
+  100% { 
+    border-color: var(--accent-green); 
+    box-shadow: 0 0 18px var(--accent-green-glow), inset 0 0 10px rgba(0, 230, 118, 0.3);
+  }
 }
 
 .card-name {
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--text-primary);
   line-height: 1.2;
+  letter-spacing: 0.2px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 6px rgba(0, 0, 0, 0.8);
 }
 
 .card-cost {
   font-size: 12px;
-  color: var(--accent-green);
-  font-weight: bold;
+  color: #00e676;
+  font-weight: 800;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
+  font-family: monospace, 'Courier New', sans-serif;
 }
 
 .card-power {
-  font-size: 9px;
-  color: var(--text-muted);
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #80deea;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
 }
 
 /* Build Progress Overlay */
@@ -407,9 +464,10 @@ body, html {
   left: 0;
   width: 0%;
   height: 4px;
-  background-color: var(--accent-orange);
-  box-shadow: 0 0 4px var(--accent-orange);
+  background: linear-gradient(90deg, #ff9100, #ff3d00);
+  box-shadow: 0 0 6px rgba(255, 145, 0, 0.9);
   transition: width 0.1s linear;
+  border-radius: 0 0 4px 4px;
 }
 
 /* Utility Hidden state */

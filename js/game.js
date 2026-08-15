@@ -73,9 +73,9 @@ class Game {
     // Wide rectangular battlefield: preserve the diamond cells while giving
     // the overall layout a 16:9 footprint and the same tile count as before.
     this.grid = new Grid(320, 180, 40);
+    this.ai = new EnemyAI(this);
     this.input = new InputHandler(this);
     this.ui = new UIManager(this);
-    this.ai = new EnemyAI(this);
     this.audio = new AudioSynthesizer();
     this.dayCycle = new DayCycle(120);
     this.stars = this.generateStars(120);
@@ -155,13 +155,15 @@ class Game {
     this.placementType = null;
     this.nextEntityId = 1;
     this.lastResourceGrowTime = 0;
-    this.ai.lastTickTime = 0;
-    this.ai.lastAttackTime = 0;
-    this.ai.state = 'idle';
-    this.ai.buildTimer = 0;
-    this.ai.queuedBuilding = null;
-    this.ai.targetTile = null;
-    this.ui.clearSidebarBuildVisuals();
+    if (this.ai) {
+      this.ai.lastTickTime = 0;
+      this.ai.lastAttackTime = 0;
+      this.ai.state = 'idle';
+      this.ai.buildTimer = 0;
+      this.ai.queuedBuilding = null;
+      this.ai.targetTile = null;
+    }
+    if (this.ui) this.ui.clearSidebarBuildVisuals();
     document.body.style.cursor = 'default';
 
     this.grid.generateMap();
