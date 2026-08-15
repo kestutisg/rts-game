@@ -6,6 +6,7 @@
 
 import {
   BIOMES,
+  getBiomeForTile,
   getBiomeForY,
   GROUND_PALETTES,
   ROCK_PALETTES,
@@ -145,7 +146,7 @@ export class Grid {
   assignBiomes() {
     for (let x = 0; x < this.width; x++) {
       for (let y = 0; y < this.height; y++) {
-        this.tiles[x][y].biome = getBiomeForY(y, this.height);
+        this.tiles[x][y].biome = getBiomeForTile(x, y, this.width, this.height);
       }
     }
   }

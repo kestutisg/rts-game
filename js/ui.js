@@ -219,19 +219,16 @@ export class UIManager {
     const canvasX = (mouseX / rect.width) * this.minimapCanvas.width;
     const canvasY = (mouseY / rect.height) * this.minimapCanvas.height;
 
-    const mapW = this.game.grid.width;
-    const mapH = this.game.grid.height;
-    const cellW = this.minimapCanvas.width / mapW;
-    const cellH = this.minimapCanvas.height / mapH;
+    const normX = canvasX / this.minimapCanvas.width;
+    const normY = canvasY / this.minimapCanvas.height;
 
-    const targetGridX = canvasX / cellW;
-    const targetGridY = canvasY / cellH;
+    const targetWorldX = normX * this.game.grid.mapWidthPx;
+    const targetWorldY = normY * this.game.grid.mapHeightPx;
 
-    const worldCoords = this.game.grid.getTileCoords(targetGridX, targetGridY);
     const cam = this.game.camera;
 
-    cam.x = worldCoords.x - cam.width / 2;
-    cam.y = worldCoords.y - cam.height / 2;
+    cam.x = targetWorldX - cam.width / 2;
+    cam.y = targetWorldY - cam.height / 2;
 
     // Keep all four viewport corners over real isometric tiles.
     this.game.grid.clampCamera(cam);
@@ -580,16 +577,24 @@ export class UIManager {
     const ctx = this.offscreenMinimapCanvas.getContext('2d');
     const mapW = this.game.grid.width;
     const mapH = this.game.grid.height;
-    const cellW = this.offscreenMinimapCanvas.width / mapW;
-    const cellH = this.offscreenMinimapCanvas.height / mapH;
+    const mw = this.offscreenMinimapCanvas.width;
+    const mh = this.offscreenMinimapCanvas.height;
+    const mapWidthPx = this.game.grid.mapWidthPx;
+    const mapHeightPx = this.game.grid.mapHeightPx;
+    const tileW = Math.max(1.8, (this.game.grid.isoWidth / mapWidthPx) * mw);
+    const tileH = Math.max(1.8, (this.game.grid.isoHeight / mapHeightPx) * mh);
 
     ctx.fillStyle = '#060a0c';
-    ctx.fillRect(0, 0, this.offscreenMinimapCanvas.width, this.offscreenMinimapCanvas.height);
+    ctx.fillRect(0, 0, mw, mh);
 
-    // Render static terrain
+    // Render static terrain at isometric world positions
     for (let x = 0; x < mapW; x++) {
       for (let y = 0; y < mapH; y++) {
         const tile = this.game.grid.tiles[x][y];
+        const coords = this.game.grid.getTileCoords(x, y);
+        const mx = (coords.x / mapWidthPx) * mw;
+        const my = (coords.y / mapHeightPx) * mh;
+
         if (tile.type === 'water') {
           const isIce = tile.biome === BIOMES.polar;
           ctx.fillStyle = tile.waterVariant === 'waterfall'
@@ -597,17 +602,17 @@ export class UIManager {
             : tile.waterVariant === 'river'
               ? (isIce ? '#98b8cc' : '#1565c0')
               : (isIce ? '#88a8bc' : '#0d47a1');
-          ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
+          ctx.fillRect(mx - tileW / 2, my - tileH / 2, tileW, tileH);
         } else if (tile.type === 'rock') {
           ctx.fillStyle = tile.biome === BIOMES.dry ? '#5a5040'
             : tile.biome === BIOMES.polar ? '#788890' : '#455a64';
-          ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
+          ctx.fillRect(mx - tileW / 2, my - tileH / 2, tileW, tileH);
         } else if (tile.type === 'ore') {
           ctx.fillStyle = '#00e676';
-          ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
+          ctx.fillRect(mx - tileW / 2, my - tileH / 2, tileW, tileH);
         } else if (tile.type === 'grass') {
           ctx.fillStyle = getMinimapGroundColor(tile.biome, tile.elevation);
-          ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
+          ctx.fillRect(mx - tileW / 2, my - tileH / 2, tileW, tileH);
         }
       }
     }
@@ -634,17 +639,15 @@ export class UIManager {
       entities.forEach(ent => {
         if (ent.isDead) return;
 
+        const mx = (ent.x / this.game.grid.mapWidthPx) * this.minimapCanvas.width;
+        const my = (ent.y / this.game.grid.mapHeightPx) * this.minimapCanvas.height;
+
         if (ent.isBuilding) {
-          ctx.fillRect(
-            ent.gridX * cellW, 
-            ent.gridY * cellH, 
-            ent.gridWidth * cellW, 
-            ent.gridHeight * cellH
-          );
+          const bw = Math.max(3, (ent.gridWidth * this.game.grid.isoWidth / this.game.grid.mapWidthPx) * this.minimapCanvas.width);
+          const bh = Math.max(3, (ent.gridHeight * this.game.grid.isoHeight / this.game.grid.mapHeightPx) * this.minimapCanvas.height);
+          ctx.fillRect(mx - bw / 2, my - bh / 2, bw, bh);
         } else {
-          const ux = Math.floor(ent.x / this.game.grid.tileSize);
-          const uy = Math.floor(ent.y / this.game.grid.tileSize);
-          ctx.fillRect(ux * cellW - 1, uy * cellH - 1, cellW + 1, cellH + 1);
+          ctx.fillRect(mx - 1.5, my - 1.5, 3, 3);
         }
       });
     };
@@ -693,32 +696,20 @@ export class UIManager {
 
     // Draw projected Camera Viewport on minimap
     const cam = this.game.camera;
-    const getGridCellCoords = (wx, wy) => {
-      const U = (wx - this.game.grid.height * this.game.grid.halfW) / this.game.grid.halfW;
-      const V = wy / this.game.grid.halfH;
-      return {
-        x: Math.min(mapW - 1, Math.max(0, (V + U) / 2)),
-        y: Math.min(mapH - 1, Math.max(0, (V - U) / 2))
-      };
-    };
+    const normCamX = cam.x / this.game.grid.mapWidthPx;
+    const normCamY = cam.y / this.game.grid.mapHeightPx;
+    const normCamW = cam.width / this.game.grid.mapWidthPx;
+    const normCamH = cam.height / this.game.grid.mapHeightPx;
 
-    // Calculate grid coordinates of the four corners of screen viewport
-    const tl = getGridCellCoords(cam.x, cam.y);
-    const tr = getGridCellCoords(cam.x + cam.width, cam.y);
-    const br = getGridCellCoords(cam.x + cam.width, cam.y + cam.height);
-    const bl = getGridCellCoords(cam.x, cam.y + cam.height);
+    const cvx = normCamX * this.minimapCanvas.width;
+    const cvy = normCamY * this.minimapCanvas.height;
+    const cvw = normCamW * this.minimapCanvas.width;
+    const cvh = normCamH * this.minimapCanvas.height;
 
     ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-    ctx.beginPath();
-    ctx.moveTo(tl.x * cellW, tl.y * cellH);
-    ctx.lineTo(tr.x * cellW, tr.y * cellH);
-    ctx.lineTo(br.x * cellW, br.y * cellH);
-    ctx.lineTo(bl.x * cellW, bl.y * cellH);
-    ctx.closePath();
-    ctx.fill();
-
+    ctx.fillRect(cvx, cvy, cvw, cvh);
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 1.5;
-    ctx.stroke();
+    ctx.strokeRect(cvx, cvy, cvw, cvh);
   }
 }

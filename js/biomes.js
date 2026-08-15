@@ -15,13 +15,17 @@ export const CLIMATE_BANDS = {
   dry: 0.12,
 };
 
-export function getBiomeForY(y, height) {
-  const t = y / Math.max(1, height - 1);
+export function getBiomeForTile(x, y, width, height) {
+  const t = (x + y) / Math.max(1, width + height - 2);
   const { polar, dry } = CLIMATE_BANDS;
 
   if (t < polar || t > 1 - polar) return BIOMES.polar;
   if (t < polar + dry || t > 1 - polar - dry) return BIOMES.dry;
   return BIOMES.temperate;
+}
+
+export function getBiomeForY(y, height) {
+  return getBiomeForTile(0, y, height, height);
 }
 
 /** Ground tile colors indexed by elevation (0 flat, 1 hill, 2 peak). */
