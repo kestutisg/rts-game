@@ -8,6 +8,7 @@ import { AudioSynthesizer } from './audio.js';
 import { DayCycle } from './daycycle.js';
 import { BUILDING_DEFS, LEVELS, UNIT_DEFS, isUnlockedAt } from './tech.js';
 import { normalizeRaceId } from './races.js';
+import { DEFAULT_MAP_ID, getMapById } from './maps/index.js';
 
 class Game {
   constructor() {
@@ -47,6 +48,8 @@ class Game {
     // Race/Faction types
     this.playerRace = 'gdi';
     this.enemyRace = 'nod';
+    this.mapId = DEFAULT_MAP_ID;
+    this.mapDefinition = getMapById(this.mapId);
     
     // Command placement helpers
     this.placementType = null;
@@ -72,7 +75,7 @@ class Game {
     // Initialize systems
     // Wide battlefield with staggered diamond rows and height-based 2.5D
     // terrain/building extrusion.
-    this.grid = new Grid(320, 180, 40);
+    this.grid = new Grid(320, 180, 40, this.mapDefinition);
     this.ai = new EnemyAI(this);
     this.input = new InputHandler(this);
     this.ui = new UIManager(this);
@@ -134,9 +137,11 @@ class Game {
     }
   }
 
-  startGame(playerRace, enemyRace) {
+  startGame(playerRace, enemyRace, mapId = DEFAULT_MAP_ID) {
     this.playerRace = normalizeRaceId(playerRace);
     this.enemyRace = normalizeRaceId(enemyRace);
+    this.mapId = getMapById(mapId).id;
+    this.mapDefinition = getMapById(this.mapId);
     
     // Reset economy & levels
     this.playerCredits = 10000;
@@ -166,7 +171,7 @@ class Game {
     if (this.ui) this.ui.clearSidebarBuildVisuals();
     document.body.style.cursor = 'default';
 
-    this.grid.generateMap();
+    this.grid = new Grid(320, 180, 40, this.mapDefinition);
     this.setupStartingBases();
     if (this.ui) this.ui.offscreenMinimapDirty = true;
     
@@ -244,14 +249,8 @@ class Game {
   }
 
   getStartingBaseCoordinates(faction) {
-    const inset = this.grid.spawnInset;
-    if (faction === 'player') {
-      return { x: inset, y: inset };
-    }
-    return {
-      x: this.grid.width - inset - 1,
-      y: this.grid.height - inset - 1,
-    };
+    const base = this.grid.startingBases[faction] || this.grid.startingBases.player;
+    return { x: base.x, y: base.y };
   }
 
   restart() {

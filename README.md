@@ -14,6 +14,7 @@ Choose GDI or NOD and face an AI opponent on a staggered 2.5D map. Gather ore, e
 - **Pathfinding** — A* navigation around rocks and structures
 - **Enemy AI** — automated expansion, unit production, and periodic attack waves
 - **Radar minimap** — tactical overview in the sidebar
+- **Country-inspired maps** — choose Great Britain, Iceland, Japan, New Zealand, Cuba, or Italy; each map has its own land shape and base positions
 - **Synth background music** — procedurally generated via the Web Audio API
 - **Faction asymmetry** — GDI fields heavy armor, railguns, sonic emitters, and orbital strikes; NOD fields stealth, fast vehicles, obelisks, and toxic weapons
 
@@ -72,6 +73,7 @@ rts-game/
     ├── grid.js         # Staggered 2.5D map, rendering, A* pathfinding
     ├── input.js        # Mouse/keyboard input and unit commands
     ├── ui.js           # HUD, sidebar, minimap, tooltips
+    ├── maps/           # Separate country-inspired map definitions
     ├── building.js     # Structure types and construction
     ├── unit.js         # Combat units and harvesters
     ├── ai.js           # Enemy skirmish AI

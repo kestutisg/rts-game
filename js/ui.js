@@ -8,6 +8,7 @@ import { BUILDING_DEFS, LEVELS, UNIT_DEFS } from './tech.js';
 import { applyRaceBuildingStats, getRace, getRaceBuildingName, getRaceUnitName } from './races.js';
 import { BIOMES, getMinimapGroundColor } from './biomes.js';
 import { updateAllCardBackgrounds } from './card-art.js';
+import { DEFAULT_MAP_ID, MAPS } from './maps/index.js';
 
 export class UIManager {
   constructor(game) {
@@ -46,6 +47,7 @@ export class UIManager {
     this.sidebarState = 'idle';
 
     this.selectedBuilding = null;
+    this.selectedMapId = DEFAULT_MAP_ID;
 
     // Create dynamic Hover Tooltip element
     this.hoverTooltip = document.createElement('div');
@@ -175,13 +177,30 @@ export class UIManager {
       });
     }
 
+    // Battlefield selection
+    const mapCards = document.querySelectorAll('.map-card');
+    const mapDescription = document.getElementById('selected-map-description');
+    mapCards.forEach(card => {
+      card.addEventListener('click', () => {
+        this.selectedMapId = card.dataset.map || DEFAULT_MAP_ID;
+        mapCards.forEach(otherCard => {
+          const selected = otherCard === card;
+          otherCard.classList.toggle('selected', selected);
+          otherCard.setAttribute('aria-pressed', String(selected));
+        });
+
+        const map = MAPS.find(candidate => candidate.id === this.selectedMapId);
+        if (mapDescription && map) mapDescription.innerText = map.description;
+      });
+    });
+
     // Faction launch button
     const launchBtn = document.getElementById('launch-btn');
     if (launchBtn) {
       launchBtn.addEventListener('click', () => {
         const enemySelect = document.getElementById('enemy-faction-select');
         const selectedEnemyRace = enemySelect ? enemySelect.value : 'nod';
-        this.game.startGame(selectedPlayerRace, selectedEnemyRace);
+        this.game.startGame(selectedPlayerRace, selectedEnemyRace, this.selectedMapId);
       });
     }
 

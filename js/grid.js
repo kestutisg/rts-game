@@ -88,10 +88,11 @@ class PriorityQueue {
 }
 
 export class Grid {
-  constructor(width, height, tileSize) {
+  constructor(width, height, tileSize, mapDefinition = null) {
     this.width = width;
     this.height = height;
     this.tileSize = tileSize;
+    this.mapDefinition = mapDefinition;
 
     // Diamond cells are laid out in staggered horizontal rows. Every other
     // row shifts by half a cell, preserving the 2.5D/isometric silhouette
@@ -105,6 +106,7 @@ export class Grid {
     // Keep the starting bases far enough inside the staggered boundary that a
     // full camera viewport can remain completely tile-covered.
     this.spawnInset = Math.min(32, Math.floor(Math.min(width, height) / 4));
+    this.startingBases = this.resolveStartingBases();
 
     this.mapWidthPx = this.width * this.tileWidth + this.halfW;
     this.mapHeightPx = (this.height + 1) * this.halfH;
@@ -124,6 +126,7 @@ export class Grid {
       }
     }
 
+    this.applyMapShape();
     this.assignBiomes();
     this.generateElevation(scaledCount(7));
     this.generateLakes(scaledCount(4), 5, 0.55);
@@ -143,8 +146,8 @@ export class Grid {
       }
     }
 
-    this.clearSpawnArea(this.spawnInset, this.spawnInset, 10);
-    this.clearSpawnArea(this.width - this.spawnInset - 1, this.height - this.spawnInset - 1, 10);
+    this.clearSpawnArea(this.startingBases.player.x, this.startingBases.player.y, 10);
+    this.clearSpawnArea(this.startingBases.enemy.x, this.startingBases.enemy.y, 10);
 
     // Random water and rock generation must never seal the route between the
     // two starting bases. Keep the natural map when it is already connected,
@@ -154,9 +157,53 @@ export class Grid {
 
   getBasePathEndpoints() {
     return {
-      start: this.getTile(this.spawnInset, this.spawnInset),
-      end: this.getTile(this.width - this.spawnInset - 1, this.height - this.spawnInset - 1),
+      start: this.getTile(this.startingBases.player.x, this.startingBases.player.y),
+      end: this.getTile(this.startingBases.enemy.x, this.startingBases.enemy.y),
     };
+  }
+
+  resolveStartingBases() {
+    const points = this.mapDefinition?.spawnPoints;
+    const toTile = (point, fallbackX, fallbackY) => ({
+      x: Math.max(0, Math.min(this.width - 1, Math.round((point?.x ?? fallbackX) * (this.width - 1)))),
+      y: Math.max(0, Math.min(this.height - 1, Math.round((point?.y ?? fallbackY) * (this.height - 1)))),
+    });
+
+    return {
+      player: toTile(points?.player, this.spawnInset / Math.max(1, this.width - 1), this.spawnInset / Math.max(1, this.height - 1)),
+      enemy: toTile(points?.enemy, (this.width - this.spawnInset - 1) / Math.max(1, this.width - 1), (this.height - this.spawnInset - 1) / Math.max(1, this.height - 1)),
+    };
+  }
+
+  applyMapShape() {
+    const polygons = this.mapDefinition?.landPolygons;
+    if (!polygons?.length) return;
+
+    for (let x = 0; x < this.width; x++) {
+      for (let y = 0; y < this.height; y++) {
+        if (this.isLandPoint((x + 0.5) / this.width, (y + 0.5) / this.height, polygons)) continue;
+
+        const tile = this.tiles[x][y];
+        tile.type = 'water';
+        tile.waterVariant = 'lake';
+        tile.walkable = false;
+        tile.resourceAmount = 0;
+      }
+    }
+  }
+
+  isLandPoint(x, y, polygons) {
+    return polygons.some(polygon => {
+      let inside = false;
+      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const [xi, yi] = polygon[i];
+        const [xj, yj] = polygon[j];
+        const intersects = ((yi > y) !== (yj > y)) &&
+          (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);
+        if (intersects) inside = !inside;
+      }
+      return inside;
+    });
   }
 
   ensureBasePath() {
