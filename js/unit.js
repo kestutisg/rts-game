@@ -3,6 +3,12 @@ import { getFactionPalette, drawSoftShadow, getElevationLift, getEntityPalette }
 import { UNIT_DEFS } from './tech.js';
 import { applyRaceUnitStats, normalizeRaceId } from './races.js';
 
+// Units are intentionally drawn larger than their gameplay footprint so their
+// silhouettes and faction details remain readable beside large structures.
+// This affects rendering only; movement, collision, and occupancy stay based
+// on the original logical radius.
+const UNIT_VISUAL_SCALE = 1.4;
+
 export class Unit extends Entity {
   constructor(id, faction, type, x, y, speed, maxHealth, damage = 0, attackRange = 0, race = 'gdi') {
     const def = UNIT_DEFS[type];
@@ -266,6 +272,10 @@ export class Unit extends Entity {
       ctx.globalAlpha = isEnemy ? 0.45 : 0.55;
     }
 
+    ctx.translate(screenX, screenY);
+    ctx.scale(UNIT_VISUAL_SCALE, UNIT_VISUAL_SCALE);
+    ctx.translate(-screenX, -screenY);
+
     drawSoftShadow(ctx, screenX, screenY + lift * 0.3, this.radius, this.radius * 0.5);
 
     if (this.type === 'soldier' || this.type === 'rocket') {
@@ -295,7 +305,15 @@ export class Unit extends Entity {
 
     ctx.restore();
 
-    this.drawSelectionAndHP(ctx, camera, screenX, screenY, this.radius * 1.8, this.radius * 1.2, game);
+    this.drawSelectionAndHP(
+      ctx,
+      camera,
+      screenX,
+      screenY,
+      this.radius * 1.8 * UNIT_VISUAL_SCALE,
+      this.radius * 1.2 * UNIT_VISUAL_SCALE,
+      game
+    );
   }
 
   drawInfantry(ctx, sx, sy, palette, isRocket, time) {
@@ -1011,12 +1029,17 @@ export class Harvester extends Unit {
     const bob = this.state === 'moving' ? Math.sin(time * 10) * 1.2 : 0;
     const cargoRatio = this.cargo / this.maxCargo;
 
-    drawSoftShadow(ctx, screenX, screenY + lift * 0.3, this.radius + 2, (this.radius + 2) * 0.5);
-
     ctx.save();
     if (this.isStealthed) {
       ctx.globalAlpha = isEnemy ? 0.45 : 0.55;
     }
+
+    ctx.translate(screenX, screenY);
+    ctx.scale(UNIT_VISUAL_SCALE, UNIT_VISUAL_SCALE);
+    ctx.translate(-screenX, -screenY);
+
+    drawSoftShadow(ctx, screenX, screenY + lift * 0.3, this.radius + 2, (this.radius + 2) * 0.5);
+
     ctx.translate(screenX, screenY - bob);
     ctx.scale(1, 0.5);
     ctx.rotate(this.angle);
@@ -1084,6 +1107,9 @@ export class Harvester extends Unit {
     // Harvester drill arm (screen space, upright)
     const drillSpin = time * (this.state === 'mining' ? 18 : 4);
     ctx.save();
+    ctx.translate(screenX, screenY);
+    ctx.scale(UNIT_VISUAL_SCALE, UNIT_VISUAL_SCALE);
+    ctx.translate(-screenX, -screenY);
     ctx.translate(screenX + Math.cos(this.angle) * 14, screenY - 6 - bob + Math.sin(this.angle) * 7);
     ctx.rotate(drillSpin);
 
@@ -1116,20 +1142,36 @@ export class Harvester extends Unit {
       ctx.shadowColor = this.faction === 'player' ? '#00e5ff' : '#ef5350';
       ctx.shadowBlur = 10;
       ctx.strokeStyle = this.faction === 'player' ? 'rgba(0, 229, 255, 0.45)' : 'rgba(239, 83, 80, 0.45)';
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.5 * UNIT_VISUAL_SCALE;
       ctx.beginPath();
-      ctx.ellipse(screenX, screenY - bob, this.radius * 1.6, this.radius * 0.9, 0, 0, Math.PI * 2);
+      ctx.ellipse(
+        screenX,
+        screenY - bob,
+        this.radius * 1.6 * UNIT_VISUAL_SCALE,
+        this.radius * 0.9 * UNIT_VISUAL_SCALE,
+        0,
+        0,
+        Math.PI * 2
+      );
       ctx.stroke();
       ctx.restore();
     }
 
-    this.drawSelectionAndHP(ctx, camera, screenX, screenY, this.radius * 2, this.radius * 1.3, game);
+    this.drawSelectionAndHP(
+      ctx,
+      camera,
+      screenX,
+      screenY,
+      this.radius * 2 * UNIT_VISUAL_SCALE,
+      this.radius * 1.3 * UNIT_VISUAL_SCALE,
+      game
+    );
 
     if (this.selected) {
       ctx.fillStyle = '#00e676';
       ctx.font = '9px Share Tech Mono, monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(`ORE: ${Math.floor(this.cargo)}/${this.maxCargo}`, screenX, screenY + 18);
+      ctx.fillText(`ORE: ${Math.floor(this.cargo)}/${this.maxCargo}`, screenX, screenY + 18 * UNIT_VISUAL_SCALE);
     }
   }
 }
