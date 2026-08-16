@@ -442,6 +442,9 @@ export class UIManager {
   enterPlacementMode(type, cost) {
     this.game.placementType = type;
     this.game.placementCost = cost;
+    this.game.fencePlacementStartTile = null;
+    this.game.fencePlacementPreviewTiles = [];
+    if (this.game.input) this.game.input.isPlacingFence = false;
 
     let tilesW = 2;
     let tilesH = 2;
@@ -449,6 +452,10 @@ export class UIManager {
     if (def) {
       tilesW = def.gridWidth;
       tilesH = def.gridHeight;
+    }
+    if (type === 'fence') {
+      tilesW = 5;
+      tilesH = 1;
     }
 
     this.game.ghostWTiles = tilesW;
@@ -551,6 +558,9 @@ export class UIManager {
     this.game.placementCost = 0;
     this.game.ghostWTiles = 0;
     this.game.ghostHTiles = 0;
+    this.game.fencePlacementStartTile = null;
+    this.game.fencePlacementPreviewTiles = [];
+    if (this.game.input) this.game.input.isPlacingFence = false;
     document.body.style.cursor = 'default';
     this.setStatusText(`${buildingName} BUILD CANCELLED. CREDITS UNCHANGED.`);
     return true;

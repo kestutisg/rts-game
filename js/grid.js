@@ -753,6 +753,18 @@ export class Grid {
     return neighbors;
   }
 
+  isTilePassableForUnit(tile, unit = null) {
+    if (!tile || !tile.walkable) return false;
+    if (tile.unitOccupant && tile.unitOccupant !== unit) return false;
+
+    const building = tile.occupiedBy;
+    if (!building || building === unit) return true;
+    return Boolean(
+      building.def?.isGate &&
+      (!unit || building.faction === unit.faction)
+    );
+  }
+
   findPath(startTile, endTile, unit = null) {
     if (!startTile || !endTile) return null;
     if (startTile === endTile) return [];
@@ -762,7 +774,7 @@ export class Grid {
     if (endIsBlocked) {
       const neighbors = this.getNeighbors(endTile);
       const walkableNeighbors = neighbors.filter(n =>
-        n.walkable && !n.occupiedBy && (!n.unitOccupant || n.unitOccupant === unit)
+        this.isTilePassableForUnit(n, unit) && !n.occupiedBy
       );
       if (walkableNeighbors.length > 0) {
         walkableNeighbors.sort((a, b) => {
@@ -813,17 +825,15 @@ export class Grid {
       for (const neighbor of this.getNeighbors(current)) {
         if (closedSet.has(neighbor)) continue;
 
-        const buildingOccupant = neighbor.occupiedBy;
-        const unitOccupant = neighbor.unitOccupant;
-        const isFriendlyGate = buildingOccupant?.isBuilding && buildingOccupant.def?.isGate &&
-          (!unit || buildingOccupant.faction === unit.faction);
-        const isOccupied = Boolean(
-          (unitOccupant && unitOccupant !== unit) ||
-          (buildingOccupant && buildingOccupant !== unit && !isFriendlyGate)
-        );
-        if (!neighbor.walkable || isOccupied) continue;
+        if (!this.isTilePassableForUnit(neighbor, unit)) continue;
 
         const isDiagonal = neighbor.x !== current.x && neighbor.y !== current.y;
+        if (isDiagonal) {
+          const horizontal = this.getTile(neighbor.x, current.y);
+          const vertical = this.getTile(current.x, neighbor.y);
+          if (!this.isTilePassableForUnit(horizontal, unit) ||
+              !this.isTilePassableForUnit(vertical, unit)) continue;
+        }
         const elevCost = 1 + neighbor.elevation * 0.4;
         const moveCost = (isDiagonal ? 1.414 : 1.0) * elevCost;
         const tentativeGScore = (gScore.get(current) ?? Infinity) + moveCost;

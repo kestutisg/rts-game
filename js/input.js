@@ -21,6 +21,7 @@ export class InputHandler {
     this.isDragging = false;
     this.dragStartScreenX = 0;
     this.dragStartScreenY = 0;
+    this.isPlacingFence = false;
 
     // Keyboard panning states
     this.keys = {};
@@ -83,7 +84,15 @@ export class InputHandler {
       if (e.button !== 0) return; // Left click only
 
       if (this.game.placementType) {
-        this.tryPlaceBuilding();
+        if (this.game.placementType === 'fence') {
+          const startTile = this.game.grid.getTileAtWorld(this.worldMouseX, this.worldMouseY);
+          if (!startTile) return;
+          this.isPlacingFence = true;
+          this.game.fencePlacementStartTile = startTile;
+          this.updateFencePlacementPreview();
+        } else {
+          this.tryPlaceBuilding();
+        }
         return;
       }
 
@@ -93,8 +102,16 @@ export class InputHandler {
     });
 
     window.addEventListener('mouseup', (e) => {
-      if (e.button !== 0 || !this.isDragging) return;
+      if (e.button !== 0) return;
       this.updateMousePosition(e, false);
+
+      if (this.isPlacingFence) {
+        this.isPlacingFence = false;
+        this.tryPlaceBuilding();
+        return;
+      }
+
+      if (!this.isDragging) return;
       this.isDragging = false;
 
       const width = Math.abs(this.mouseX - this.dragStartScreenX);
@@ -117,6 +134,7 @@ export class InputHandler {
       this.updateMousePosition(e);
 
       if (this.game.placementType) {
+        this.isPlacingFence = false;
         this.game.ui.cancelSidebarBuild();
         return;
       }
@@ -136,12 +154,21 @@ export class InputHandler {
     this.mouseY = Math.max(0, Math.min(this.canvas.height, (e.clientY - rect.top) * scaleY));
 
     this.updateWorldCoordinates();
+    if (this.isPlacingFence) this.updateFencePlacementPreview();
     if (updateHover) this.updateHoveredEntity();
   }
 
   updateWorldCoordinates() {
     this.worldMouseX = this.mouseX + this.game.camera.x;
     this.worldMouseY = this.mouseY + this.game.camera.y;
+  }
+
+  updateFencePlacementPreview() {
+    const startTile = this.game.fencePlacementStartTile;
+    const endTile = this.game.grid.getTileAtWorld(this.worldMouseX, this.worldMouseY);
+    this.game.fencePlacementPreviewTiles = startTile && endTile
+      ? this.game.getFenceChainTiles('player', startTile, endTile, 5)
+      : [];
   }
 
   updateHoveredEntity() {
@@ -292,6 +319,44 @@ export class InputHandler {
   tryPlaceBuilding() {
     const tile = this.game.grid.getTileAtWorld(this.worldMouseX, this.worldMouseY);
     if (!tile) return;
+
+    if (this.game.placementType === 'fence') {
+      const startTile = this.game.fencePlacementStartTile || tile;
+      const chain = this.game.getFenceChainTiles('player', startTile, tile, 5);
+      const affordablePieces = Math.min(
+        chain.length,
+        Math.floor(this.game.playerCredits / this.game.placementCost)
+      );
+      const piecesToPlace = chain.slice(0, affordablePieces);
+
+      if (piecesToPlace.length === 0) {
+        this.game.ui.setStatusText('CANNOT PLACE CONCRETE BARRIER HERE OR CREDITS ARE INSUFFICIENT.');
+        return;
+      }
+
+      this.game.spendCredits('player', this.game.placementCost * piecesToPlace.length);
+      piecesToPlace.forEach((piece) => {
+        this.game.spawnBuilding(
+          'player',
+          'fence',
+          piece.x,
+          piece.y,
+          this.game.playerRace,
+          { clearUi: false }
+        );
+      });
+
+      this.game.ui.clearSidebarBuildVisuals();
+      this.game.placementType = null;
+      this.game.placementCost = 0;
+      this.game.ghostWTiles = 0;
+      this.game.ghostHTiles = 0;
+      this.game.fencePlacementStartTile = null;
+      this.game.fencePlacementPreviewTiles = [];
+      document.body.style.cursor = 'default';
+      this.game.ui.setStatusText(`CONCRETE BARRIER CHAIN PLACED: ${piecesToPlace.length} SEGMENT${piecesToPlace.length === 1 ? '' : 'S'}.`);
+      return;
+    }
 
     // Anchor placement around the tile hovered by mouse (acting as top-left corner)
     const isValid = this.game.validateBuildingPlacement(

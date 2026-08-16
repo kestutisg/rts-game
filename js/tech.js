@@ -83,7 +83,7 @@ export const BUILDING_DEFS = {
     height3D: 24,
   },
   fence: {
-    name: 'Fence',
+    name: 'Concrete Barrier',
     cost: 120,
     duration: 2.0,
     level: 'improved',
@@ -94,6 +94,7 @@ export const BUILDING_DEFS = {
     powerUsage: 0,
     height3D: 12,
     passiveDefense: true,
+    blocksMovement: true,
   },
   gate: {
     name: 'Gate',

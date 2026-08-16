@@ -173,6 +173,15 @@ export class Unit extends Entity {
     this.turretAngle = this.angle;
 
     const moveStep = this.speed * dt;
+    const travelRatio = dist > 0 ? Math.min(1, moveStep / dist) : 0;
+    const nextX = this.x + dx * travelRatio;
+    const nextY = this.y + dy * travelRatio;
+    if (!game.canUnitTraverseSegment(this, this.x, this.y, nextX, nextY)) {
+      this.state = 'idle';
+      this.path = [];
+      return;
+    }
+
     if (dist <= moveStep) {
       if (!game.claimUnitTile(this, currentTargetTile)) {
         this.state = 'idle';
@@ -188,8 +197,8 @@ export class Unit extends Entity {
         this.path = [];
       }
     } else {
-      this.x += (dx / dist) * moveStep;
-      this.y += (dy / dist) * moveStep;
+      this.x = nextX;
+      this.y = nextY;
     }
   }
 
@@ -1020,6 +1029,15 @@ export class Harvester extends Unit {
     }
 
     const moveStep = this.speed * dt;
+    const travelRatio = dist > 0 ? Math.min(1, moveStep / dist) : 0;
+    const nextX = this.x + dx * travelRatio;
+    const nextY = this.y + dy * travelRatio;
+    if (!game.canUnitTraverseSegment(this, this.x, this.y, nextX, nextY)) {
+      this.state = 'idle';
+      this.path = [];
+      return;
+    }
+
     if (dist <= moveStep) {
       if (!game.claimUnitTile(this, currentTargetTile)) {
         this.state = 'idle';
@@ -1030,8 +1048,8 @@ export class Harvester extends Unit {
       this.y = targetWorldY;
       this.pathIndex++;
     } else {
-      this.x += (dx / dist) * moveStep;
-      this.y += (dy / dist) * moveStep;
+      this.x = nextX;
+      this.y = nextY;
     }
   }
 

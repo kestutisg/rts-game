@@ -116,6 +116,7 @@ class Game {
     this.nextEntityId = 1;
     this.currentTime = 0;
     this.state = 'menu'; // 'menu', 'playing', 'victory', 'defeat'
+    this.enemyBaseDestroyedRemainingCount = null;
     this.chemicalClouds = [];
 
     // Camera
@@ -152,6 +153,8 @@ class Game {
     this.ghostHTiles = 0;
     this.ghostWPx = 0;
     this.ghostHPx = 0;
+    this.fencePlacementStartTile = null;
+    this.fencePlacementPreviewTiles = [];
 
     // Hovered structure label
     this.hoveredEntity = null;
@@ -258,6 +261,10 @@ class Game {
     this.clickPings = [];
     this.hoveredEntity = null;
     this.placementType = null;
+    this.enemyBaseDestroyedRemainingCount = null;
+    this.fencePlacementStartTile = null;
+    this.fencePlacementPreviewTiles = [];
+    if (this.input) this.input.isPlacingFence = false;
     this.nextEntityId = 1;
     this.lastResourceGrowTime = 0;
     if (this.ai) {
@@ -528,7 +535,8 @@ class Game {
         for (let y = building.gridY; y < building.gridY + building.gridHeight; y++) {
           const tile = this.grid.getTile(x, y);
           if (tile) {
-            tile.walkable = Boolean(building.def?.isGate);
+            tile.walkable = Boolean(building.def?.isGate) &&
+              !Boolean(building.def?.blocksMovement);
             tile.occupiedBy = building;
           }
         }
@@ -689,6 +697,10 @@ class Game {
       this.clickPings = [];
       this.placementType = null;
       this.placementCost = 0;
+      this.enemyBaseDestroyedRemainingCount = null;
+      this.fencePlacementStartTile = null;
+      this.fencePlacementPreviewTiles = [];
+      if (this.input) this.input.isPlacingFence = false;
       this.ui.clearSidebarBuildVisuals();
       this.ui.selectedBuilding = this.selectedEntities.find(entity => entity.faction === 'player' && entity.isBuilding) || null;
       this.ui.hoverTooltip?.classList.add('hidden');
@@ -741,6 +753,10 @@ class Game {
     this.clickPings = [];
     this.hoveredEntity = null;
     this.placementType = null;
+    this.enemyBaseDestroyedRemainingCount = null;
+    this.fencePlacementStartTile = null;
+    this.fencePlacementPreviewTiles = [];
+    if (this.input) this.input.isPlacingFence = false;
     this.nextEntityId = 1;
     this.lastResourceGrowTime = 0;
     this.ai.lastTickTime = 0;
@@ -897,7 +913,47 @@ class Game {
     return true;
   }
 
-  spawnBuilding(faction, type, gridX, gridY, race) {
+  canUnitTraverseSegment(unit, fromX, fromY, toX, toY) {
+    const isBlockingBuilding = (tile) => {
+      const building = tile?.occupiedBy;
+      return Boolean(
+        building && building !== unit &&
+        (!building.def?.isGate || building.faction !== unit.faction)
+      );
+    };
+
+    const fromTile = this.grid.getTileAtWorld(fromX, fromY);
+    const toTile = this.grid.getTileAtWorld(toX, toY);
+    if (fromTile && toTile) {
+      const logicalSteps = Math.max(
+        Math.abs(toTile.x - fromTile.x),
+        Math.abs(toTile.y - fromTile.y)
+      );
+      for (let step = 1; step <= logicalSteps; step++) {
+        const ratio = step / logicalSteps;
+        const tile = this.grid.getTile(
+          Math.round(fromTile.x + (toTile.x - fromTile.x) * ratio),
+          Math.round(fromTile.y + (toTile.y - fromTile.y) * ratio)
+        );
+        if (isBlockingBuilding(tile)) return false;
+      }
+    }
+
+    const distance = Math.hypot(toX - fromX, toY - fromY);
+    const samples = Math.max(2, Math.ceil(distance / (this.grid.tileSize * 0.2)));
+
+    for (let sample = 1; sample <= samples; sample++) {
+      const ratio = sample / samples;
+      const x = fromX + (toX - fromX) * ratio;
+      const y = fromY + (toY - fromY) * ratio;
+      const tile = this.grid.getTileAtWorld(x, y);
+      if (isBlockingBuilding(tile)) return false;
+    }
+
+    return true;
+  }
+
+  spawnBuilding(faction, type, gridX, gridY, race, options = {}) {
     if (!this.canUseBuilding(faction, type)) return null;
 
     const b = new Building(
@@ -925,7 +981,7 @@ class Game {
 
     if (faction === 'player') {
       this.playerEntities.push(b);
-      this.ui.clearSidebarBuildVisuals();
+      if (options?.clearUi !== false) this.ui.clearSidebarBuildVisuals();
     } else {
       this.enemyEntities.push(b);
     }
@@ -934,7 +990,8 @@ class Game {
       for (let y = gridY; y < gridY + b.gridHeight; y++) {
         const tile = this.grid.getTile(x, y);
         if (tile) {
-          tile.walkable = Boolean(BUILDING_DEFS[type]?.isGate);
+          tile.walkable = Boolean(BUILDING_DEFS[type]?.isGate) &&
+            !Boolean(BUILDING_DEFS[type]?.blocksMovement);
           tile.occupiedBy = b;
         }
       }
@@ -945,6 +1002,48 @@ class Game {
     }
 
     return b;
+  }
+
+  getFenceChainTiles(faction, startTile, endTile = startTile, maxPieces = 5) {
+    if (!startTile || !endTile) return [];
+
+    const startBuilding = startTile.occupiedBy;
+    const startsFromExistingFence = Boolean(
+      startBuilding?.isBuilding &&
+      startBuilding.type === 'fence' &&
+      startBuilding.faction === faction &&
+      !startBuilding.isDead
+    );
+    const deltaX = endTile.x - startTile.x;
+    const deltaY = endTile.y - startTile.y;
+    const distance = Math.max(Math.abs(deltaX), Math.abs(deltaY));
+    const absDeltaX = Math.abs(deltaX);
+    const absDeltaY = Math.abs(deltaY);
+    let directionX = 0;
+    let directionY = 0;
+    if (absDeltaX > absDeltaY * 1.8) {
+      directionX = Math.sign(deltaX);
+    } else if (absDeltaY > absDeltaX * 1.8) {
+      directionY = Math.sign(deltaY);
+    } else {
+      // Snap the drag to the nearest 45-degree grid direction.
+      directionX = Math.sign(deltaX);
+      directionY = Math.sign(deltaY);
+    }
+    const requestedLength = startsFromExistingFence
+      ? Math.max(1, Math.min(maxPieces, distance))
+      : Math.max(1, Math.min(maxPieces, distance + 1));
+    const chain = [];
+
+    for (let offset = 0; offset < requestedLength; offset++) {
+      const tile = this.grid.getTile(
+        startTile.x + directionX * (offset + (startsFromExistingFence ? 1 : 0)),
+        startTile.y + directionY * (offset + (startsFromExistingFence ? 1 : 0))
+      );
+      if (!tile || !this.validateBuildingPlacement(faction, tile.x, tile.y, 1, 1)) break;
+      chain.push(tile);
+    }
+    return chain;
   }
 
   validateBuildingPlacement(faction, gridX, gridY, width, height) {
@@ -1068,8 +1167,12 @@ class Game {
     }
 
     // 2. Victory / Defeat trigger conditions evaluation
-    const playerAlive = this.playerEntities.length > 0;
-    const enemyAlive = this.enemyEntities.length > 0;
+    const livePlayerEntities = this.playerEntities.filter(entity => !entity.isDead);
+    const liveEnemyEntities = this.enemyEntities.filter(entity => !entity.isDead);
+    const liveEnemyBuildings = liveEnemyEntities.filter(entity => entity.isBuilding);
+    const liveEnemyUnits = liveEnemyEntities.filter(entity => !entity.isBuilding);
+    const playerAlive = livePlayerEntities.length > 0;
+    const enemyAlive = liveEnemyEntities.length > 0;
 
     if (!playerAlive) {
       this.triggerGameOver('defeat');
@@ -1079,6 +1182,24 @@ class Game {
     if (!enemyAlive) {
       this.triggerGameOver('victory');
       return;
+    }
+
+    if (liveEnemyBuildings.length === 0 && liveEnemyUnits.length > 0) {
+      if (this.enemyBaseDestroyedRemainingCount !== liveEnemyUnits.length) {
+        const unitsByType = liveEnemyUnits.reduce((counts, unit) => {
+          counts[unit.type] = (counts[unit.type] || 0) + 1;
+          return counts;
+        }, {});
+        const remaining = Object.entries(unitsByType)
+          .map(([type, count]) => `${count} ${type.replaceAll('_', ' ')}`)
+          .join(', ');
+        this.ui.setStatusText(
+          `ENEMY BASE DESTROYED. ${liveEnemyUnits.length} ENEMY UNIT${liveEnemyUnits.length === 1 ? '' : 'S'} REMAIN: ${remaining}.`
+        );
+        this.enemyBaseDestroyedRemainingCount = liveEnemyUnits.length;
+      }
+    } else if (liveEnemyBuildings.length > 0) {
+      this.enemyBaseDestroyedRemainingCount = null;
     }
 
     // 3. Tiberium resource spread tick
@@ -1288,42 +1409,60 @@ class Game {
     if (this.placementType) {
       const tile = this.grid.getTileAtWorld(this.input.worldMouseX, this.input.worldMouseY);
       if (tile) {
-        const isValid = this.validateBuildingPlacement('player', tile.x, tile.y, this.ghostWTiles, this.ghostHTiles);
-        
-        // Floor corners of ghost
-        const getScreenCoords = (gx, gy) => {
-          const halfW = this.grid.halfW;
-          const halfH = this.grid.halfH;
-          const rowOffset = Math.abs(Math.floor(tile.y)) % 2 === 1 ? halfW : 0;
-          const originX = this.grid.mapOriginX + tile.x * this.grid.tileWidth + rowOffset;
-          const originY = tile.y * halfH;
-          const localX = gx - tile.x;
-          const localY = gy - tile.y;
-          const coords = {
-            x: originX + (localX - localY) * halfW,
-            y: originY + (localX + localY) * halfH,
+        if (this.placementType === 'fence') {
+          this.fencePlacementPreviewTiles.forEach((previewTile) => {
+            const coords = this.grid.getTileCoords(previewTile.x, previewTile.y);
+            const sx = coords.x - this.camera.x;
+            const sy = coords.y - this.camera.y;
+            this.ctx.fillStyle = 'rgba(0, 255, 102, 0.22)';
+            this.ctx.strokeStyle = 'oklch(0.8 0.22 142)';
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            this.ctx.moveTo(sx, sy - this.grid.halfH);
+            this.ctx.lineTo(sx + this.grid.halfW, sy);
+            this.ctx.lineTo(sx, sy + this.grid.halfH);
+            this.ctx.lineTo(sx - this.grid.halfW, sy);
+            this.ctx.closePath();
+            this.ctx.fill();
+            this.ctx.stroke();
+          });
+        } else {
+          const isValid = this.validateBuildingPlacement('player', tile.x, tile.y, this.ghostWTiles, this.ghostHTiles);
+
+          // Floor corners of the structure ghost.
+          const getScreenCoords = (gx, gy) => {
+            const halfW = this.grid.halfW;
+            const halfH = this.grid.halfH;
+            const rowOffset = Math.abs(Math.floor(tile.y)) % 2 === 1 ? halfW : 0;
+            const originX = this.grid.mapOriginX + tile.x * this.grid.tileWidth + rowOffset;
+            const originY = tile.y * halfH;
+            const localX = gx - tile.x;
+            const localY = gy - tile.y;
+            const coords = {
+              x: originX + (localX - localY) * halfW,
+              y: originY + (localX + localY) * halfH,
+            };
+            return { x: coords.x - this.camera.x, y: coords.y - this.camera.y };
           };
-          return { x: coords.x - this.camera.x, y: coords.y - this.camera.y };
-        };
 
-        const ptTop = getScreenCoords(tile.x, tile.y);
-        const ptRight = getScreenCoords(tile.x + this.ghostWTiles, tile.y);
-        const ptBottom = getScreenCoords(tile.x + this.ghostWTiles, tile.y + this.ghostHTiles);
-        const ptLeft = getScreenCoords(tile.x, tile.y + this.ghostHTiles);
+          const ptTop = getScreenCoords(tile.x, tile.y);
+          const ptRight = getScreenCoords(tile.x + this.ghostWTiles, tile.y);
+          const ptBottom = getScreenCoords(tile.x + this.ghostWTiles, tile.y + this.ghostHTiles);
+          const ptLeft = getScreenCoords(tile.x, tile.y + this.ghostHTiles);
 
-        this.ctx.fillStyle = isValid ? 'rgba(0, 255, 102, 0.22)' : 'rgba(255, 30, 30, 0.22)';
-        this.ctx.strokeStyle = isValid ? 'oklch(0.8 0.22 142)' : 'oklch(0.62 0.22 25)';
-        this.ctx.lineWidth = 2;
+          this.ctx.fillStyle = isValid ? 'rgba(0, 255, 102, 0.22)' : 'rgba(255, 30, 30, 0.22)';
+          this.ctx.strokeStyle = isValid ? 'oklch(0.8 0.22 142)' : 'oklch(0.62 0.22 25)';
+          this.ctx.lineWidth = 2;
 
-        this.ctx.beginPath();
-        this.ctx.moveTo(ptTop.x, ptTop.y);
-        this.ctx.lineTo(ptRight.x, ptRight.y);
-        this.ctx.lineTo(ptBottom.x, ptBottom.y);
-        this.ctx.lineTo(ptLeft.x, ptLeft.y);
-        this.ctx.closePath();
-        
-        this.ctx.fill();
-        this.ctx.stroke();
+          this.ctx.beginPath();
+          this.ctx.moveTo(ptTop.x, ptTop.y);
+          this.ctx.lineTo(ptRight.x, ptRight.y);
+          this.ctx.lineTo(ptBottom.x, ptBottom.y);
+          this.ctx.lineTo(ptLeft.x, ptLeft.y);
+          this.ctx.closePath();
+          this.ctx.fill();
+          this.ctx.stroke();
+        }
       }
     }
 
