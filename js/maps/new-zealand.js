@@ -3,7 +3,14 @@ export const NEW_ZEALAND = {
   name: 'New Zealand',
   description: 'Two long islands shaped by mountains, glaciers, and a narrow northern war zone.',
   accent: '#8ed6a5',
-  dimensions: { width: 352, height: 512 },
+  dimensions: { width: 704, height: 1024 },
+  climate: {
+    defaultBiome: 'temperate',
+    zones: [
+      { name: 'Northern subtropics', from: 0, to: 0.18, biome: 'tropical' },
+      { name: 'Southern cold zone', from: 0.76, to: 1, biome: 'polar' },
+    ],
+  },
   spawnPoints: {
     player: { x: 0.62, y: 0.22 },
     enemy: { x: 0.67, y: 0.39 },

@@ -3,7 +3,14 @@ export const ITALY = {
   name: 'Italy',
   description: 'A fortified northern plain narrows into the mountainous boot and southern peninsula.',
   accent: '#d6b27c',
-  dimensions: { width: 352, height: 544 },
+  dimensions: { width: 704, height: 1088 },
+  climate: {
+    defaultBiome: 'temperate',
+    zones: [
+      { name: 'Alpine cold zone', from: 0, to: 0.12, biome: 'polar' },
+      { name: 'Mediterranean south', from: 0.74, to: 1, biome: 'dry' },
+    ],
+  },
   spawnPoints: {
     player: { x: 0.48, y: 0.22 },
     enemy: { x: 0.63, y: 0.78 },

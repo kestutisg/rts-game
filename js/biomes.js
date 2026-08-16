@@ -1,12 +1,14 @@
 /**
  * Climate zones and biome palettes for procedural map generation.
- * Polar bands at the north/south edges, dry subtropical belts, temperate center.
+ * Supports legacy global bands plus map-specific polar, dry, temperate, and
+ * tropical climate zones.
  */
 
 export const BIOMES = {
   temperate: 'temperate',
   dry: 'dry',
   polar: 'polar',
+  tropical: 'tropical',
 };
 
 /** Fraction of map height occupied by each edge band. */
@@ -15,7 +17,13 @@ export const CLIMATE_BANDS = {
   dry: 0.12,
 };
 
-export function getBiomeForTile(x, y, width, height) {
+export function getBiomeForTile(x, y, width, height, climate = null) {
+  if (climate) {
+    const t = y / Math.max(1, height - 1);
+    const climateZone = (climate.zones || []).find(zone => t >= zone.from && t <= zone.to);
+    return climateZone?.biome || climate.defaultBiome || BIOMES.temperate;
+  }
+
   // Climate bands follow the map's vertical grid axis. Using x + y here
   // rotates the bands diagonally, which makes the rectangular radar show
   // polar terrain only in opposite corners instead of across its top/bottom
@@ -28,8 +36,8 @@ export function getBiomeForTile(x, y, width, height) {
   return BIOMES.temperate;
 }
 
-export function getBiomeForY(y, height) {
-  return getBiomeForTile(0, y, height, height);
+export function getBiomeForY(y, height, climate = null) {
+  return getBiomeForTile(0, y, height, height, climate);
 }
 
 /** Ground tile colors indexed by elevation (0 flat, 1 hill, 2 peak). */
@@ -49,18 +57,25 @@ export const GROUND_PALETTES = {
     { top: '#c4d4de', edge: '#a4b4c0', sideDark: '#94a4b0', sideLight: '#b4c4ce' },
     { top: '#d0dee6', edge: '#b0c0ca', sideDark: '#a0b0ba', sideLight: '#c0d0d8' },
   ],
+  tropical: [
+    { top: '#163321', edge: '#214a2d', sideDark: '#10251a', sideLight: '#1d4228' },
+    { top: '#1b3e26', edge: '#285938', sideDark: '#142c1d', sideLight: '#235031' },
+    { top: '#214a2d', edge: '#306a41', sideDark: '#183821', sideLight: '#2b5e38' },
+  ],
 };
 
 export const ROCK_PALETTES = {
   temperate: { top: '#303a42', left: '#181e22', right: '#22292f', edge: '#414d57' },
   dry: { top: '#4a4030', left: '#2a2418', right: '#363024', edge: '#5a5040' },
   polar: { top: '#788890', left: '#586870', right: '#647480', edge: '#8898a0' },
+  tropical: { top: '#36563b', left: '#1d3322', right: '#29452e', edge: '#4c704e' },
 };
 
 export const MINIMAP_GROUND = {
   temperate: ['#0a1014', '#141c20', '#1e2830'],
   dry: ['#1e1810', '#2a2418', '#363024'],
   polar: ['#8898a4', '#98a8b4', '#a8b8c4'],
+  tropical: ['#10261a', '#1a3822', '#244b2d'],
 };
 
 export function getMinimapGroundColor(biome, elevation) {
@@ -69,5 +84,5 @@ export function getMinimapGroundColor(biome, elevation) {
 }
 
 export function isWaterAllowed(biome) {
-  return biome === BIOMES.temperate;
+  return biome === BIOMES.temperate || biome === BIOMES.tropical;
 }

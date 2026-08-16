@@ -3,7 +3,13 @@ export const CUBA = {
   name: 'Cuba',
   description: 'A long tropical island where the battle runs from western foothills to eastern ports.',
   accent: '#e7c76f',
-  dimensions: { width: 576, height: 256 },
+  dimensions: { width: 1152, height: 512 },
+  climate: {
+    defaultBiome: 'tropical',
+    zones: [
+      { name: 'Seasonally dry southern belt', from: 0.48, to: 0.72, biome: 'dry' },
+    ],
+  },
   spawnPoints: {
     player: { x: 0.25, y: 0.49 },
     enemy: { x: 0.75, y: 0.53 },

@@ -7,7 +7,6 @@
 import {
   BIOMES,
   getBiomeForTile,
-  getBiomeForY,
   GROUND_PALETTES,
   ROCK_PALETTES,
   isWaterAllowed,
@@ -18,7 +17,7 @@ export class Tile {
     this.x = x;
     this.y = y;
     this.type = type; // 'grass', 'rock', 'ore', 'water'
-    this.biome = BIOMES.temperate; // 'temperate', 'dry', 'polar'
+    this.biome = BIOMES.temperate; // 'temperate', 'dry', 'polar', 'tropical'
     this.waterVariant = null; // 'lake', 'river', 'waterfall'
     this.elevation = 0; // 0 = flat, 1 = hill, 2 = peak
     this.resourceAmount = 0;
@@ -259,9 +258,13 @@ export class Grid {
   assignBiomes() {
     for (let x = 0; x < this.width; x++) {
       for (let y = 0; y < this.height; y++) {
-        this.tiles[x][y].biome = getBiomeForTile(x, y, this.width, this.height);
+        this.tiles[x][y].biome = this.getBiomeForTile(x, y);
       }
     }
+  }
+
+  getBiomeForTile(x, y) {
+    return getBiomeForTile(x, y, this.width, this.height, this.mapDefinition?.climate);
   }
 
   scatterDryRocks() {
@@ -360,16 +363,19 @@ export class Grid {
   }
 
   generateRivers(count) {
-    for (let r = 0; r < count; r++) {
-      const lakes = [];
-      for (let x = 0; x < this.width; x++) {
-        for (let y = 0; y < this.height; y++) {
-          if (this.tiles[x][y].waterVariant === 'lake') {
-            lakes.push({ x, y });
-          }
+    // Lake locations do not need to be rediscovered for every river. Keeping
+    // this scan outside the loop matters on the largest maps, where the
+    // terrain grid can contain hundreds of thousands of cells.
+    const lakes = [];
+    for (let x = 0; x < this.width; x++) {
+      for (let y = 0; y < this.height; y++) {
+        if (this.tiles[x][y].waterVariant === 'lake') {
+          lakes.push({ x, y });
         }
       }
+    }
 
+    for (let r = 0; r < count; r++) {
       let startX, startY, endX, endY;
 
       if (lakes.length >= 2) {
@@ -471,7 +477,7 @@ export class Grid {
         if (tx >= 0 && tx < this.width && ty >= 0 && ty < this.height) {
           const tile = this.tiles[tx][ty];
           tile.type = 'grass';
-          tile.biome = BIOMES.temperate;
+          tile.biome = this.getBiomeForTile(tx, ty);
           tile.waterVariant = null;
           tile.elevation = 0;
           tile.walkable = true;

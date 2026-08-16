@@ -3,7 +3,13 @@ export const ICELAND = {
   name: 'Iceland',
   description: 'A broad volcanic island of ice shelves, lava fields, and open approaches.',
   accent: '#b8dceb',
-  dimensions: { width: 480, height: 320 },
+  dimensions: { width: 960, height: 640 },
+  climate: {
+    defaultBiome: 'polar',
+    zones: [
+      { name: 'Milder coastal belt', from: 0.25, to: 0.75, biome: 'temperate' },
+    ],
+  },
   spawnPoints: {
     player: { x: 0.30, y: 0.47 },
     enemy: { x: 0.70, y: 0.50 },

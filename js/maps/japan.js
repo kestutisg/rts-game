@@ -3,7 +3,14 @@ export const JAPAN = {
   name: 'Japan',
   description: 'A chain of mountainous islands where the central corridor becomes the frontline.',
   accent: '#ef9aa7',
-  dimensions: { width: 352, height: 576 },
+  dimensions: { width: 704, height: 1152 },
+  climate: {
+    defaultBiome: 'temperate',
+    zones: [
+      { name: 'Northern cold zone', from: 0, to: 0.16, biome: 'polar' },
+      { name: 'Southern subtropics', from: 0.82, to: 1, biome: 'tropical' },
+    ],
+  },
   spawnPoints: {
     player: { x: 0.49, y: 0.47 },
     enemy: { x: 0.67, y: 0.56 },

@@ -3,7 +3,13 @@ export const GREAT_BRITAIN = {
   name: 'Great Britain',
   description: 'A rugged north-south island with exposed coasts and narrow invasion routes.',
   accent: '#7dc9e8',
-  dimensions: { width: 288, height: 512 },
+  dimensions: { width: 576, height: 1024 },
+  climate: {
+    defaultBiome: 'temperate',
+    zones: [
+      { name: 'Northern cold uplands', from: 0, to: 0.10, biome: 'polar' },
+    ],
+  },
   spawnPoints: {
     player: { x: 0.48, y: 0.18 },
     enemy: { x: 0.49, y: 0.82 },
