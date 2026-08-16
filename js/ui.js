@@ -748,7 +748,9 @@ export class UIManager {
 
         if (tile.type === 'water') {
           const isIce = tile.biome === BIOMES.polar;
-          ctx.fillStyle = tile.waterVariant === 'waterfall'
+          ctx.fillStyle = tile.isBridge
+            ? '#9a6a3a'
+            : tile.waterVariant === 'waterfall'
             ? (isIce ? '#a8c8dc' : '#2196f3')
             : tile.waterVariant === 'river'
               ? (isIce ? '#98b8cc' : '#1565c0')

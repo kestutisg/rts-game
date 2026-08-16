@@ -15,6 +15,12 @@ export const NEW_ZEALAND = {
     player: { x: 0.62, y: 0.22 },
     enemy: { x: 0.67, y: 0.39 },
   },
+  rivers: [
+    { points: [[0.52, 0.18], [0.62, 0.25], [0.70, 0.33], [0.79, 0.41]], width: 1 },
+  ],
+  bridges: [
+    { points: [[0.69, 0.32]] },
+  ],
   landPolygons: [
     // North Island
     [[0.54, 0.12], [0.60, 0.09], [0.66, 0.10], [0.72, 0.14], [0.76, 0.19],

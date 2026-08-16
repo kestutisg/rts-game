@@ -15,6 +15,12 @@ export const ITALY = {
     player: { x: 0.48, y: 0.22 },
     enemy: { x: 0.63, y: 0.78 },
   },
+  rivers: [
+    { points: [[0.37, 0.16], [0.49, 0.25], [0.57, 0.37], [0.65, 0.52]], width: 1 },
+  ],
+  bridges: [
+    { points: [[0.54, 0.33]] },
+  ],
   landPolygons: [
     // Mainland and the boot
     [[0.25, 0.12], [0.31, 0.09], [0.38, 0.07], [0.45, 0.07], [0.52, 0.08],

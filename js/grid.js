@@ -23,6 +23,7 @@ export class Tile {
     this.resourceAmount = 0;
     this.maxResource = 100;
     this.walkable = type === 'grass' || type === 'ore';
+    this.isBridge = false;
     // Keep buildings and mobile units separate so a unit can pass through a
     // friendly gate without allowing two units to share that cell.
     this.occupiedBy = null;
@@ -141,7 +142,12 @@ export class Grid {
     this.assignBiomes();
     this.generateElevation(scaledCount(7));
     this.generateLakes(scaledCount(4), 5, 0.55);
-    this.generateRivers(scaledCount(2));
+    if (this.mapDefinition?.rivers?.length) {
+      this.generateDefinedRivers();
+      this.applyDefinedBridges();
+    } else {
+      this.generateRivers(scaledCount(2));
+    }
     this.markWaterfalls();
     this.createClusters(scaledCount(12), 'rock', 3, 0.4);
     this.scatterDryRocks();
@@ -164,6 +170,7 @@ export class Grid {
     // two starting bases. Keep the natural map when it is already connected,
     // and only carve a small fallback corridor when it is not.
     this.ensureBasePath();
+    this.ensureHarvesterResourceAccess();
   }
 
   getBasePathEndpoints() {
@@ -256,12 +263,60 @@ export class Grid {
         const tile = this.getTile(centerX + dx, centerY + dy);
         if (!tile) continue;
 
+        if (tile.type === 'water' && tile.waterVariant === 'river') {
+          this.setBridgeTile(centerX + dx, centerY + dy);
+          continue;
+        }
+
         tile.type = 'grass';
         tile.waterVariant = null;
+        tile.isBridge = false;
         tile.waterfallDrop = 0;
         tile.elevation = 0;
         tile.walkable = true;
         tile.resourceAmount = 0;
+      }
+    }
+  }
+
+  ensureHarvesterResourceAccess() {
+    const { start } = this.getBasePathEndpoints();
+    if (!start || !start.walkable) return;
+
+    const totalTiles = this.width * this.height;
+    const visited = new Uint8Array(totalTiles);
+    const queue = new Int32Array(totalTiles);
+    let head = 0;
+    let tail = 0;
+    const indexOf = (x, y) => x * this.height + y;
+    const enqueue = (tile) => {
+      if (!tile || !tile.walkable) return;
+      const index = indexOf(tile.x, tile.y);
+      if (visited[index]) return;
+      visited[index] = 1;
+      queue[tail++] = index;
+    };
+
+    enqueue(start);
+    while (head < tail) {
+      const index = queue[head++];
+      const x = Math.floor(index / this.height);
+      const y = index % this.height;
+      for (const neighbor of this.getNeighbors(this.tiles[x][y])) enqueue(neighbor);
+    }
+
+    // Do not leave ore fields on isolated islands or behind a sealed river.
+    // Every resource that remains on the map is reachable by a harvester from
+    // the connected starting-base landmass.
+    for (let x = 0; x < this.width; x++) {
+      for (let y = 0; y < this.height; y++) {
+        const tile = this.tiles[x][y];
+        if (tile.type !== 'ore' || visited[indexOf(x, y)]) continue;
+        tile.type = 'grass';
+        tile.resourceAmount = 0;
+        tile.walkable = true;
+        tile.waterVariant = null;
+        tile.isBridge = false;
       }
     }
   }
@@ -346,13 +401,103 @@ export class Grid {
   setWaterTile(x, y, variant) {
     if (x < 0 || x >= this.width || y < 0 || y >= this.height) return;
     const tile = this.tiles[x][y];
-    if (!isWaterAllowed(tile.biome) || tile.type === 'rock') return;
+    if (variant === 'river' && this.mapDefinition?.landPolygons?.length &&
+        !this.isLandPoint((x + 0.5) / this.width, (y + 0.5) / this.height, this.mapDefinition.landPolygons)) {
+      return;
+    }
+    if ((!isWaterAllowed(tile.biome) && variant !== 'river') || tile.type === 'rock') return;
 
     tile.type = 'water';
     tile.waterVariant = variant;
+    tile.isBridge = false;
     tile.walkable = false;
     tile.resourceAmount = 0;
     tile.elevation = Math.min(tile.elevation, variant === 'lake' ? 0 : tile.elevation);
+  }
+
+  setBridgeTile(x, y) {
+    const tile = this.getTile(x, y);
+    if (!tile || tile.type !== 'water' || tile.waterVariant !== 'river') return false;
+    tile.isBridge = true;
+    tile.walkable = true;
+    tile.resourceAmount = 0;
+    return true;
+  }
+
+  setNearestRiverBridge(x, y, maxRadius = 3) {
+    let nearest = null;
+    for (let dx = -maxRadius; dx <= maxRadius; dx++) {
+      for (let dy = -maxRadius; dy <= maxRadius; dy++) {
+        const tile = this.getTile(x + dx, y + dy);
+        if (!tile || tile.type !== 'water' || tile.waterVariant !== 'river') continue;
+        const distance = Math.hypot(dx, dy);
+        if (!nearest || distance < nearest.distance) nearest = { tile, distance };
+      }
+    }
+    return nearest ? this.setBridgeTile(nearest.tile.x, nearest.tile.y) : false;
+  }
+
+  normalizedPointToTile(point) {
+    return {
+      x: Math.max(0, Math.min(this.width - 1, Math.round(point[0] * (this.width - 1)))),
+      y: Math.max(0, Math.min(this.height - 1, Math.round(point[1] * (this.height - 1)))),
+    };
+  }
+
+  generateDefinedRivers() {
+    for (const river of this.mapDefinition.rivers || []) {
+      const points = river.points || [];
+      if (points.length < 2) continue;
+
+      for (let i = 1; i < points.length; i++) {
+        const start = this.normalizedPointToTile(points[i - 1]);
+        const end = this.normalizedPointToTile(points[i]);
+        this.carveDefinedRiverSegment(start.x, start.y, end.x, end.y, river.width || 1);
+      }
+    }
+  }
+
+  carveDefinedRiverSegment(startX, startY, endX, endY, width = 1) {
+    const steps = Math.max(Math.abs(endX - startX), Math.abs(endY - startY));
+    const halfWidth = Math.max(0, Math.floor((width - 1) / 2));
+
+    for (let step = 0; step <= steps; step++) {
+      const ratio = steps === 0 ? 0 : step / steps;
+      const cx = Math.round(startX + (endX - startX) * ratio);
+      const cy = Math.round(startY + (endY - startY) * ratio);
+
+      for (let dx = -halfWidth; dx <= halfWidth; dx++) {
+        for (let dy = -halfWidth; dy <= halfWidth; dy++) {
+          this.setWaterTile(cx + dx, cy + dy, 'river');
+        }
+      }
+    }
+  }
+
+  applyDefinedBridges() {
+    for (const bridge of this.mapDefinition.bridges || []) {
+      const points = bridge.points || [];
+      if (points.length === 0) continue;
+
+      if (points.length === 1) {
+        const point = this.normalizedPointToTile(points[0]);
+        this.setNearestRiverBridge(point.x, point.y);
+        continue;
+      }
+
+      for (let i = 1; i < points.length; i++) {
+        const start = this.normalizedPointToTile(points[i - 1]);
+        const end = this.normalizedPointToTile(points[i]);
+        const steps = Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y));
+        for (let step = 0; step <= steps; step++) {
+          const ratio = steps === 0 ? 0 : step / steps;
+          this.setNearestRiverBridge(
+            Math.round(start.x + (end.x - start.x) * ratio),
+            Math.round(start.y + (end.y - start.y) * ratio)
+          );
+        }
+      }
+    }
   }
 
   generateLakes(count, radius, density) {
@@ -441,7 +586,7 @@ export class Grid {
     for (let x = 0; x < this.width; x++) {
       for (let y = 0; y < this.height; y++) {
         const tile = this.tiles[x][y];
-        if (tile.type !== 'water' || tile.waterVariant === 'lake') continue;
+        if (tile.type !== 'water' || tile.waterVariant === 'lake' || tile.isBridge) continue;
 
         for (const neighbor of this.getNeighbors(tile)) {
           if (neighbor.elevation > tile.elevation && neighbor.type !== 'water') {
@@ -490,6 +635,7 @@ export class Grid {
           tile.type = 'grass';
           tile.biome = this.getBiomeForTile(tx, ty);
           tile.waterVariant = null;
+          tile.isBridge = false;
           tile.elevation = 0;
           tile.walkable = true;
           tile.resourceAmount = 0;
@@ -791,6 +937,29 @@ export class Grid {
     const lakeEdge = dayCycle.tintColor(isIce ? '#a8c0d0' : '#143858', ambient);
     const riverTop = dayCycle.tintColor(isIce ? '#b8d0e0' : '#0c3058', ambient);
     const riverEdge = dayCycle.tintColor(isIce ? '#98b4c8' : '#185070', ambient);
+
+    if (tile.isBridge) {
+      this.drawGroundTile(ctx, sx, syE, riverTop, riverEdge);
+      ctx.fillStyle = dayCycle.tintColor('#76502f', ambient);
+      ctx.beginPath();
+      ctx.moveTo(sx - this.halfW * 0.72, syE);
+      ctx.lineTo(sx, syE - this.halfH * 0.45);
+      ctx.lineTo(sx + this.halfW * 0.72, syE);
+      ctx.lineTo(sx, syE + this.halfH * 0.45);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = dayCycle.tintColor('#c69656', ambient);
+      ctx.lineWidth = 2;
+      for (let i = -2; i <= 2; i++) {
+        const offset = i * 7;
+        ctx.beginPath();
+        ctx.moveTo(sx - this.halfW * 0.48 + offset * 0.15, syE - this.halfH * 0.25 + offset * 0.35);
+        ctx.lineTo(sx + this.halfW * 0.48 + offset * 0.15, syE + this.halfH * 0.25 + offset * 0.35);
+        ctx.stroke();
+      }
+      return;
+    }
 
     if (tile.waterVariant === 'lake') {
       this.drawGroundTile(ctx, sx, syE, lakeTop, lakeEdge);

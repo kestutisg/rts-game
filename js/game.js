@@ -56,7 +56,8 @@ function serializeGrid(grid) {
       // maps small enough for browser localStorage.
       bytes[offset++] = typeCode | (biomeCode << 2) | (waterVariantCode << 4) | (elevationCode << 6);
       bytes[offset++] = Math.max(0, Math.min(100, Math.round(tile.resourceAmount || 0)));
-      bytes[offset++] = Math.max(0, Math.min(3, Math.round(tile.waterfallDrop || 0)));
+      const waterfallDrop = Math.max(0, Math.min(3, Math.round(tile.waterfallDrop || 0)));
+      bytes[offset++] = waterfallDrop | (tile.isBridge ? 4 : 0);
     }
   }
 
@@ -93,8 +94,10 @@ function restoreGrid(grid, savedGrid) {
       tile.waterVariant = WATER_VARIANTS_BY_CODE[waterVariantCode] || null;
       tile.elevation = elevationCode;
       tile.resourceAmount = bytes[offset++];
-      tile.waterfallDrop = bytes[offset++];
-      tile.walkable = tile.type === 'grass' || tile.type === 'ore';
+      const waterFlags = bytes[offset++];
+      tile.waterfallDrop = waterFlags & 0x03;
+      tile.isBridge = Boolean(waterFlags & 0x04);
+      tile.walkable = tile.type === 'grass' || tile.type === 'ore' || tile.isBridge;
       tile.occupiedBy = null;
       tile.unitOccupant = null;
     }
@@ -514,7 +517,8 @@ class Game {
       for (let y = 0; y < this.grid.height; y++) {
         this.grid.tiles[x][y].occupiedBy = null;
         this.grid.tiles[x][y].unitOccupant = null;
-        this.grid.tiles[x][y].walkable = this.grid.tiles[x][y].type === 'grass' || this.grid.tiles[x][y].type === 'ore';
+        this.grid.tiles[x][y].walkable = this.grid.tiles[x][y].type === 'grass' ||
+          this.grid.tiles[x][y].type === 'ore' || this.grid.tiles[x][y].isBridge;
       }
     }
 
