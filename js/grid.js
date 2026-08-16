@@ -106,7 +106,7 @@ export class Grid {
 
     // Keep the starting bases far enough inside the staggered boundary that a
     // full camera viewport can remain completely tile-covered.
-    this.spawnInset = Math.min(32, Math.floor(Math.min(width, height) / 4));
+    this.spawnInset = Math.min(32, Math.floor(Math.min(this.width, this.height) / 4));
     this.startingBases = this.resolveStartingBases();
 
     this.mapWidthPx = this.width * this.tileWidth + this.halfW;
@@ -622,8 +622,12 @@ export class Grid {
     // The starting bases are far apart on the wide battlefield. Allow the
     // search to explore enough of the map to find a valid route around terrain
     // instead of failing solely because of the old fixed 500-node cap.
-    let maxNodes = Math.max(500, Math.min(this.width * this.height, 5000));
-    while (!openHeap.isEmpty() && maxNodes-- > 0) {
+    const maxNodes = Math.min(
+      this.width * this.height,
+      Math.max(5000, Math.round((this.width + this.height) * 10))
+    );
+    let remainingNodes = maxNodes;
+    while (!openHeap.isEmpty() && remainingNodes-- > 0) {
       const current = openHeap.pop();
 
       if (current === endTile) {
@@ -819,8 +823,15 @@ export class Grid {
     const amb = ambient || defaultAmbient;
     const dc = dayCycle || { tintColor: (hex) => hex };
 
-    for (let x = 0; x < this.width; x++) {
-      for (let y = 0; y < this.height; y++) {
+    // Large country maps can contain hundreds of thousands of cells. Only
+    // visit the tile window that can overlap the current camera viewport.
+    const minX = Math.max(0, Math.floor((camera.x - this.mapOriginX - this.halfW) / this.tileWidth) - 2);
+    const maxX = Math.min(this.width - 1, Math.ceil((camera.x + camera.width - this.mapOriginX + this.halfW) / this.tileWidth) + 2);
+    const minY = Math.max(0, Math.floor(camera.y / this.halfH) - 2);
+    const maxY = Math.min(this.height - 1, Math.ceil((camera.y + camera.height) / this.halfH) + 2);
+
+    for (let x = minX; x <= maxX; x++) {
+      for (let y = minY; y <= maxY; y++) {
         const tile = this.tiles[x][y];
         const coords = this.getTileCoords(x, y);
         const maxHeight = 20 + tile.elevation * 16 + (tile.waterVariant === 'waterfall' ? 30 : 0);
