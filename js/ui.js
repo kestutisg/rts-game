@@ -36,6 +36,7 @@ export class UIManager {
     this.tabBuildings = document.getElementById('tab-buildings');
     this.tabUnits = document.getElementById('tab-units');
     this.cancelBuildButton = document.getElementById('cancel-build');
+    this.repairButton = document.getElementById('repair-selected');
     this.buildingsGrid = document.getElementById('buildings-grid');
     this.unitsGrid = document.getElementById('units-grid');
 
@@ -143,6 +144,10 @@ export class UIManager {
 
     if (this.cancelBuildButton) {
       this.cancelBuildButton.addEventListener('click', () => this.cancelSidebarBuild());
+    }
+
+    if (this.repairButton) {
+      this.repairButton.addEventListener('click', () => this.toggleRepairSelected());
     }
 
     Object.keys(UNIT_DEFS).forEach(type => {
@@ -349,13 +354,58 @@ export class UIManager {
   }
 
   onBuildingSelected(building) {
-    this.selectedBuilding = building;
-    if (building) {
-      const name = getRaceBuildingName(building.race, building.type).toUpperCase();
-      this.setStatusText(`${name} SELECTED. HEALTH: ${Math.floor(building.health)}/${building.maxHealth}`);
+    this.onSelectionChanged(building ? [building] : []);
+  }
+
+  onSelectionChanged(entities = []) {
+    const playerEntities = entities.filter(entity => entity.faction === 'player' && !entity.isDead);
+    this.selectedBuilding = playerEntities.find(entity => entity.isBuilding) || null;
+
+    if (playerEntities.length === 1) {
+      const entity = playerEntities[0];
+      const name = entity.isBuilding
+        ? getRaceBuildingName(entity.race, entity.type).toUpperCase()
+        : getRaceUnitName(entity.race, entity.type).toUpperCase();
+      this.setStatusText(`${name} SELECTED. HEALTH: ${Math.floor(entity.health)}/${entity.maxHealth}`);
+    } else if (playerEntities.length > 1) {
+      this.setStatusText(`${playerEntities.length} UNITS SELECTED.`);
     } else {
       this.setStatusText("SYSTEM ONLINE. STANDBY FOR COMMAND.");
     }
+
+    this.updateRepairButton();
+  }
+
+  getRepairableSelection() {
+    return this.game.selectedEntities.filter(entity =>
+      entity.faction === 'player' &&
+      !entity.isDead &&
+      !entity.isUnderConstruction &&
+      entity.health < entity.maxHealth
+    );
+  }
+
+  toggleRepairSelected() {
+    if (this.game.state !== 'playing') return;
+
+    const repairable = this.getRepairableSelection();
+    if (repairable.length === 0) {
+      this.setStatusText('SELECT A DAMAGED FRIENDLY UNIT OR STRUCTURE.');
+      return;
+    }
+
+    const shouldStop = repairable.some(entity => entity.repairing);
+    repairable.forEach(entity => {
+      entity.repairing = !shouldStop;
+      if (entity.repairing && !entity.isBuilding) {
+        entity.state = 'idle';
+        entity.path = [];
+        entity.combatTarget = null;
+      }
+    });
+
+    this.setStatusText(shouldStop ? 'REPAIR HALTED.' : `REPAIRING ${repairable.length} ASSET${repairable.length === 1 ? '' : 'S'}.`);
+    this.updateRepairButton();
   }
 
   startSidebarBuild(type, cost, duration) {
@@ -512,9 +562,20 @@ export class UIManager {
       (this.sidebarState === 'idle' && !this.game.placementType);
   }
 
+  updateRepairButton() {
+    if (!this.repairButton) return;
+
+    const repairable = this.getRepairableSelection();
+    const active = repairable.some(entity => entity.repairing);
+    this.repairButton.disabled = this.game.state !== 'playing' || repairable.length === 0;
+    this.repairButton.innerText = active ? 'STOP REPAIR' : 'REPAIR SELECTED';
+    this.repairButton.classList.toggle('repairing', active);
+  }
+
   update(dt) {
     this.updateSidebarBuild(dt);
     this.updateCancelBuildButton();
+    this.updateRepairButton();
 
     // Show only whole credits that are actually available to spend. Credits
     // are stored to cents, so rounding here could display an unaffordable
@@ -623,7 +684,11 @@ export class UIManager {
         queueText = `${queuedName} (${Math.floor(ent.trainingProgress * 100)}%)`;
       }
 
-      let statusMsg = ent.isUnderConstruction ? `CONSTRUCTING (${Math.floor(ent.constructionProgress * 100)}%)` : 'OPERATIONAL';
+      let statusMsg = ent.repairing
+        ? 'REPAIRING'
+        : ent.isUnderConstruction
+          ? `CONSTRUCTING (${Math.floor(ent.constructionProgress * 100)}%)`
+          : 'OPERATIONAL';
 
       this.hoverTooltip.innerHTML = `
         <div class="label-title ${factionClass}">${this.getBuildingName(ent.type, ent.race)}</div>

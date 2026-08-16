@@ -15,6 +15,7 @@ export class Entity {
     this.maxHealth = maxHealth;
     this.selected = false;
     this.isDead = false;
+    this.repairing = false;
   }
 
   takeDamage(amount) {
@@ -49,5 +50,17 @@ export class Entity {
     }
 
     drawHealthBar(ctx, screenX, screenY, width, this.health / this.maxHealth);
+
+    if (this.repairing) {
+      const markerY = screenY - height / 2 - 10;
+      ctx.strokeStyle = '#00e676';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(screenX - 5, markerY);
+      ctx.lineTo(screenX + 5, markerY);
+      ctx.moveTo(screenX, markerY - 5);
+      ctx.lineTo(screenX, markerY + 5);
+      ctx.stroke();
+    }
   }
 }

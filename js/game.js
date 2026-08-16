@@ -592,6 +592,10 @@ class Game {
     this.playerEntities.forEach(ent => ent.update(dt, this));
     this.enemyEntities.forEach(ent => ent.update(dt, this));
 
+    // Player repairs run after entity updates so units remain stationary while
+    // they are being serviced and credit costs are applied consistently.
+    this.updateRepairs(dt);
+
     // Relock mobile units grid reference
     const setUnitOccupancies = (entities) => {
       entities.forEach(ent => {
@@ -661,6 +665,37 @@ class Game {
 
     // UI Panel update
     this.ui.update(dt);
+  }
+
+  updateRepairs(dt) {
+    this.playerEntities.forEach(entity => {
+      if (!entity.repairing || entity.isDead || entity.isUnderConstruction || entity.health >= entity.maxHealth) {
+        if (entity.health >= entity.maxHealth || entity.isDead || entity.isUnderConstruction) {
+          entity.repairing = false;
+        }
+        return;
+      }
+
+      const healthPerSecond = entity.isBuilding ? 42 : 30;
+      const creditsPerSecond = entity.isBuilding ? 8 : 5;
+      const missingHealth = entity.maxHealth - entity.health;
+      const affordableHealth = (this.playerCredits / creditsPerSecond) * healthPerSecond;
+      const restoredHealth = Math.min(missingHealth, healthPerSecond * dt, affordableHealth);
+
+      if (restoredHealth <= 0) {
+        entity.repairing = false;
+        return;
+      }
+
+      const cost = (restoredHealth / healthPerSecond) * creditsPerSecond;
+      if (!this.spendCredits('player', cost)) {
+        entity.repairing = false;
+        return;
+      }
+
+      entity.health = Math.min(entity.maxHealth, entity.health + restoredHealth);
+      if (entity.health >= entity.maxHealth) entity.repairing = false;
+    });
   }
 
   generateStars(count) {

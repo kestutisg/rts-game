@@ -71,6 +71,13 @@ export class Unit extends Entity {
   update(dt, game) {
     if (this.isDead) return;
 
+    if (this.repairing) {
+      this.state = 'idle';
+      this.path = [];
+      this.combatTarget = null;
+      return;
+    }
+
     if (this.repathTimer > 0) {
       this.repathTimer -= dt;
     }

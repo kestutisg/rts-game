@@ -336,6 +336,40 @@ body, html {
   cursor: not-allowed;
 }
 
+.repair-btn {
+  width: 100%;
+  margin: -3px 0 12px;
+  padding: 6px 4px;
+  background: oklch(0.08 0.01 145);
+  border: 1px solid var(--accent-green);
+  border-radius: 2px;
+  color: var(--accent-green);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.repair-btn:hover:not(:disabled) {
+  background: oklch(0.65 0.2 145 / 0.18);
+  box-shadow: 0 0 8px var(--accent-green-glow);
+}
+
+.repair-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.repair-btn.repairing {
+  animation: repair-pulse 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes repair-pulse {
+  from { box-shadow: 0 0 4px var(--accent-green-glow); }
+  to { box-shadow: 0 0 13px var(--accent-green-glow); }
+}
+
 /* Build Options Cards Grid */
 .build-grid {
   display: grid;

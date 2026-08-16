@@ -11,6 +11,7 @@ Choose GDI or NOD and face an AI opponent on a staggered 2.5D map. Gather ore, e
 - **Unit production** — Harvesters, motorcycles, buggies, tanks, planes, nuclear rockets, and bio rockets
 - **Economy & power** — harvest regenerating ore fields for credits; low power slows construction and training
 - **Combat** — unit-vs-unit and unit-vs-structure combat with projectiles and health bars
+- **Repairs** — select damaged friendly units or structures and use **REPAIR SELECTED** or press **R** to restore health for credits
 - **Pathfinding** — A* navigation around rocks and structures
 - **Enemy AI** — automated expansion, unit production, and periodic attack waves
 - **Radar minimap** — tactical overview in the sidebar
@@ -46,6 +47,7 @@ Then open [http://localhost:8080](http://localhost:8080) in a modern browser.
 | **Escape / Cancel Building** | Cancel the active structure build or placement |
 | **Sidebar tabs** | Switch between Structures and Units |
 | **Build / Train buttons** | Queue construction or unit training |
+| **Repair Selected / R** | Repair selected damaged friendly units or structures |
 | **MUSIC toggle** | Enable or disable background music |
 
 ### Gameplay tips

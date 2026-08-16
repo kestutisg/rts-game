@@ -44,6 +44,11 @@ export class InputHandler {
       if ((e.key === ' ' || e.key.toLowerCase() === 'h') && this.game.state === 'playing') {
         this.centerCameraOnSelectedOrBase();
       }
+
+      if (e.key.toLowerCase() === 'r' && this.game.state === 'playing') {
+        this.game.ui.toggleRepairSelected();
+        e.preventDefault();
+      }
     });
 
     window.addEventListener('keyup', (e) => {
@@ -174,17 +179,14 @@ export class InputHandler {
     if (this.game.hoveredEntity && this.game.hoveredEntity.faction === 'player') {
       this.game.hoveredEntity.selected = true;
       this.game.selectedEntities.push(this.game.hoveredEntity);
-
-      if (this.game.hoveredEntity.isBuilding) {
-        this.game.ui.onBuildingSelected(this.game.hoveredEntity);
-      }
+      this.game.ui.onSelectionChanged(this.game.selectedEntities);
     } else if (this.game.hoveredEntity) {
       // Can click select enemy structures/units to inspect health
       this.game.hoveredEntity.selected = true;
       this.game.selectedEntities.push(this.game.hoveredEntity);
-      this.game.ui.onBuildingSelected(null);
+      this.game.ui.onSelectionChanged(this.game.selectedEntities);
     } else {
-      this.game.ui.onBuildingSelected(null);
+      this.game.ui.onSelectionChanged(this.game.selectedEntities);
     }
   }
 
@@ -205,12 +207,15 @@ export class InputHandler {
         this.game.selectedEntities.push(unit);
       }
     }
-    this.game.ui.onBuildingSelected(null);
+    this.game.ui.onSelectionChanged(this.game.selectedEntities);
   }
 
   issueCommand() {
     const selectedUnits = this.game.selectedEntities.filter(ent => !ent.isBuilding && ent.faction === 'player');
     if (selectedUnits.length === 0) return;
+
+    // A movement or attack order cancels ongoing repair for selected units.
+    selectedUnits.forEach(unit => { unit.repairing = false; });
 
     // Issue commands on hovered entity
     const targetEntity = this.game.hoveredEntity;
