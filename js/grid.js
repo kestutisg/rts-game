@@ -89,8 +89,9 @@ class PriorityQueue {
 
 export class Grid {
   constructor(width, height, tileSize, mapDefinition = null) {
-    this.width = width;
-    this.height = height;
+    const dimensions = mapDefinition?.dimensions || {};
+    this.width = dimensions.width || width;
+    this.height = dimensions.height || height;
     this.tileSize = tileSize;
     this.mapDefinition = mapDefinition;
 

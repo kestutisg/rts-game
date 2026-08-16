@@ -72,10 +72,9 @@ class Game {
     this.fpsFrames = 0;
     this.lastResourceGrowTime = 0;
 
-    // Initialize systems
-    // Wide battlefield with staggered diamond rows and height-based 2.5D
-    // terrain/building extrusion.
-    this.grid = new Grid(320, 180, 40, this.mapDefinition);
+    // Initialize systems. Each map supplies its own logical grid dimensions;
+    // the fallback keeps older/custom map definitions playable.
+    this.grid = this.createGrid();
     this.ai = new EnemyAI(this);
     this.input = new InputHandler(this);
     this.ui = new UIManager(this);
@@ -171,7 +170,7 @@ class Game {
     if (this.ui) this.ui.clearSidebarBuildVisuals();
     document.body.style.cursor = 'default';
 
-    this.grid = new Grid(320, 180, 40, this.mapDefinition);
+    this.grid = this.createGrid();
     this.setupStartingBases();
     if (this.ui) this.ui.offscreenMinimapDirty = true;
     
@@ -251,6 +250,11 @@ class Game {
   getStartingBaseCoordinates(faction) {
     const base = this.grid.startingBases[faction] || this.grid.startingBases.player;
     return { x: base.x, y: base.y };
+  }
+
+  createGrid() {
+    const dimensions = this.mapDefinition?.dimensions || { width: 320, height: 180 };
+    return new Grid(dimensions.width, dimensions.height, 40, this.mapDefinition);
   }
 
   restart() {

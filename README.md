@@ -6,7 +6,7 @@ Choose GDI or NOD and face an AI opponent on a staggered 2.5D map. Gather ore, e
 
 ## Features
 
-- **Staggered 2.5D rendering** — 320x180 diamond-cell grid with half-cell row offsets, elevated terrain, and depth-sorted buildings and units
+- **Staggered 2.5D rendering** — map-specific diamond-cell grids with half-cell row offsets, elevated terrain, and depth-sorted buildings and units
 - **Base building** — Construction Yard, Power Plant, Ore Refinery, Motor Pool, defenses, and superweapon-era towers
 - **Unit production** — Harvesters, motorcycles, buggies, tanks, planes, nuclear rockets, and bio rockets
 - **Economy & power** — harvest regenerating ore fields for credits; low power slows construction and training
