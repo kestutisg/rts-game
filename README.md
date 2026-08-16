@@ -96,4 +96,4 @@ rts-game/
 
 ## License
 
-No license file is included yet. Add one if you plan to share or open-source the project.
+This project is licensed under the [MIT License](LICENSE).
