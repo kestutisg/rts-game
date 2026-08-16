@@ -147,8 +147,9 @@ export class InputHandler {
   updateHoveredEntity() {
     // Find hovered grid tile in staggered world coordinates
     const tile = this.game.grid.getTileAtWorld(this.worldMouseX, this.worldMouseY);
-    if (tile && tile.occupiedBy) {
-      const ent = tile.occupiedBy;
+    const tileOccupant = tile?.unitOccupant || tile?.occupiedBy;
+    if (tileOccupant) {
+      const ent = tileOccupant;
       if (!ent.isDead && (!ent.isStealthed || this.game.isEntityDetected(ent, 'player'))) {
         this.game.hoveredEntity = ent;
         return;
@@ -222,6 +223,7 @@ export class InputHandler {
     const clickedTile = this.game.grid.getTileAtWorld(this.worldMouseX, this.worldMouseY);
     if (!clickedTile) return;
 
+    const reservedTiles = new Set();
     selectedUnits.forEach((unit, idx) => {
       // 1. Attack Command
       if (targetEntity && targetEntity.faction === 'enemy') {
@@ -269,6 +271,10 @@ export class InputHandler {
         const gridY = Math.min(this.game.grid.height - 1, Math.max(0, clickedTile.y + oy));
         targetTile = this.game.grid.tiles[gridX][gridY];
       }
+
+      targetTile = this.game.findNearestFreeUnitTile(targetTile, unit, 12, reservedTiles);
+      if (!targetTile) return;
+      reservedTiles.add(`${targetTile.x},${targetTile.y}`);
 
       const startTile = this.game.grid.getTileAtWorld(unit.x, unit.y);
       const path = this.game.grid.findPath(startTile, targetTile, unit);

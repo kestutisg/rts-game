@@ -153,6 +153,13 @@ export class Unit extends Entity {
     }
 
     const currentTargetTile = this.path[this.pathIndex];
+    if (currentTargetTile.unitOccupant && currentTargetTile.unitOccupant !== this) {
+      // Another unit claimed this waypoint while we were moving. Stop before
+      // entering it; the next order can choose a fresh free destination.
+      this.state = 'idle';
+      this.path = [];
+      return;
+    }
     // Retrieve staggered world coordinates of the destination tile
     const coords = game.grid.getTileCoords(currentTargetTile.x, currentTargetTile.y);
     const targetWorldX = coords.x;
@@ -167,6 +174,11 @@ export class Unit extends Entity {
 
     const moveStep = this.speed * dt;
     if (dist <= moveStep) {
+      if (!game.claimUnitTile(this, currentTargetTile)) {
+        this.state = 'idle';
+        this.path = [];
+        return;
+      }
       this.x = targetWorldX;
       this.y = targetWorldY;
       this.pathIndex++;
@@ -822,7 +834,7 @@ export class Harvester extends Unit {
           const tx = startTile.x + dx;
           const ty = startTile.y + dy;
           const tile = game.grid.getTile(tx, ty);
-          if (tile && tile.type === 'ore' && tile.resourceAmount > 0 && !tile.occupiedBy) {
+          if (tile && tile.type === 'ore' && tile.resourceAmount > 0 && !tile.unitOccupant) {
             const dist = Math.hypot(dx, dy);
             if (dist < minDist) {
               minDist = dist;
@@ -972,6 +984,11 @@ export class Harvester extends Unit {
     }
 
     const currentTargetTile = this.path[this.pathIndex];
+    if (currentTargetTile.unitOccupant && currentTargetTile.unitOccupant !== this) {
+      this.state = 'idle';
+      this.path = [];
+      return;
+    }
     const coords = game.grid.getTileCoords(currentTargetTile.x, currentTargetTile.y);
     const targetWorldX = coords.x;
     const targetWorldY = coords.y;
@@ -1004,6 +1021,11 @@ export class Harvester extends Unit {
 
     const moveStep = this.speed * dt;
     if (dist <= moveStep) {
+      if (!game.claimUnitTile(this, currentTargetTile)) {
+        this.state = 'idle';
+        this.path = [];
+        return;
+      }
       this.x = targetWorldX;
       this.y = targetWorldY;
       this.pathIndex++;

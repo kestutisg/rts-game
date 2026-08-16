@@ -96,6 +96,7 @@ function restoreGrid(grid, savedGrid) {
       tile.waterfallDrop = bytes[offset++];
       tile.walkable = tile.type === 'grass' || tile.type === 'ore';
       tile.occupiedBy = null;
+      tile.unitOccupant = null;
     }
   }
 }
@@ -512,6 +513,7 @@ class Game {
     for (let x = 0; x < this.grid.width; x++) {
       for (let y = 0; y < this.grid.height; y++) {
         this.grid.tiles[x][y].occupiedBy = null;
+        this.grid.tiles[x][y].unitOccupant = null;
         this.grid.tiles[x][y].walkable = this.grid.tiles[x][y].type === 'grass' || this.grid.tiles[x][y].type === 'ore';
       }
     }
@@ -530,8 +532,20 @@ class Game {
     });
 
     entities.filter(entity => !entity.isBuilding && !entity.isDead).forEach(unit => {
-      const tile = this.grid.getTileAtWorld(unit.x, unit.y);
-      if (tile && !tile.occupiedBy) tile.occupiedBy = unit;
+      const originTile = this.grid.getTileAtWorld(unit.x, unit.y);
+      const tile = this.findNearestFreeUnitTile(originTile, unit);
+      if (tile) {
+        const coords = this.grid.getTileCoords(tile.x, tile.y);
+        const wasRelocated = unit.x !== coords.x || unit.y !== coords.y;
+        unit.x = coords.x;
+        unit.y = coords.y;
+        tile.unitOccupant = unit;
+        if (wasRelocated) {
+          unit.path = [];
+          unit.pathIndex = 0;
+          unit.state = 'idle';
+        }
+      }
     });
   }
 
@@ -826,16 +840,57 @@ class Game {
   }
 
   addUnit(unit) {
+    const originTile = this.grid.getTileAtWorld(unit.x, unit.y);
+    const tile = this.findNearestFreeUnitTile(originTile, unit);
+    if (!tile) return false;
+
+    const coords = this.grid.getTileCoords(tile.x, tile.y);
+    unit.x = coords.x;
+    unit.y = coords.y;
+
     if (unit.faction === 'player') {
       this.playerEntities.push(unit);
     } else {
       this.enemyEntities.push(unit);
     }
 
-    const tile = this.grid.getTileAtWorld(unit.x, unit.y);
-    if (tile) {
-      tile.occupiedBy = unit;
+    tile.unitOccupant = unit;
+    return true;
+  }
+
+  findNearestFreeUnitTile(originTile, unit = null, maxRadius = 8, reservedTiles = null) {
+    if (!originTile) return null;
+
+    const isAvailable = (tile) => Boolean(
+      tile &&
+      tile.walkable &&
+      (!tile.unitOccupant || tile.unitOccupant === unit) &&
+      !tile.occupiedBy &&
+      !reservedTiles?.has(`${tile.x},${tile.y}`)
+    );
+
+    if (isAvailable(originTile)) return originTile;
+
+    for (let radius = 1; radius <= maxRadius; radius++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        for (let dy = -radius; dy <= radius; dy++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+          const tile = this.grid.getTile(originTile.x + dx, originTile.y + dy);
+          if (isAvailable(tile)) return tile;
+        }
+      }
     }
+
+    return null;
+  }
+
+  claimUnitTile(unit, tile) {
+    if (!tile || !tile.walkable) return false;
+    if (tile.unitOccupant && tile.unitOccupant !== unit) return false;
+    if (tile.occupiedBy &&
+        (!tile.occupiedBy.def?.isGate || tile.occupiedBy.faction !== unit.faction)) return false;
+    tile.unitOccupant = unit;
+    return true;
   }
 
   spawnBuilding(faction, type, gridX, gridY, race) {
@@ -900,7 +955,7 @@ class Game {
     for (let x = gridX; x < gridX + width; x++) {
       for (let y = gridY; y < gridY + height; y++) {
         const tile = this.grid.getTile(x, y);
-        if (!tile || !tile.walkable || tile.occupiedBy || tile.type === 'ore' || tile.type === 'water') {
+        if (!tile || !tile.walkable || tile.occupiedBy || tile.unitOccupant || tile.type === 'ore' || tile.type === 'water') {
           return false;
         }
       }
@@ -1032,10 +1087,10 @@ class Game {
     // 4. Temporarily unlock mobile unit grid references for dynamic moving calculations
     const clearUnitOccupancies = (entities) => {
       entities.forEach(ent => {
-        if (!ent.isDead && !ent.isBuilding) {
+        if (!ent.isDead && !ent.isBuilding && ent.state === 'moving') {
           const tile = this.grid.getTileAtWorld(ent.x, ent.y);
-          if (tile && tile.occupiedBy === ent) {
-            tile.occupiedBy = null;
+          if (tile && tile.unitOccupant === ent) {
+            tile.unitOccupant = null;
           }
         }
       });
@@ -1056,8 +1111,19 @@ class Game {
       entities.forEach(ent => {
         if (!ent.isDead && !ent.isBuilding) {
           const tile = this.grid.getTileAtWorld(ent.x, ent.y);
-          if (tile && !tile.occupiedBy) {
-            tile.occupiedBy = ent;
+          if (tile && (!tile.unitOccupant || tile.unitOccupant === ent)) {
+            tile.unitOccupant = ent;
+          } else if (tile && tile.unitOccupant !== ent) {
+            const freeTile = this.findNearestFreeUnitTile(tile, ent);
+            if (freeTile) {
+              const coords = this.grid.getTileCoords(freeTile.x, freeTile.y);
+              ent.x = coords.x;
+              ent.y = coords.y;
+              freeTile.unitOccupant = ent;
+              ent.path = [];
+              ent.pathIndex = 0;
+              ent.state = 'idle';
+            }
           }
         }
       });
@@ -1098,8 +1164,8 @@ class Game {
             }
           } else {
             const tile = this.grid.getTileAtWorld(ent.x, ent.y);
-            if (tile && tile.occupiedBy === ent) {
-              tile.occupiedBy = null;
+            if (tile && tile.unitOccupant === ent) {
+              tile.unitOccupant = null;
             }
           }
           this.particles.push(new ExplosionParticle(ent.x, ent.y, ent.isBuilding ? 30 : 12));

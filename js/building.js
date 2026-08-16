@@ -183,7 +183,7 @@ export class Building extends Entity {
       const tx = this.gridX + dir.x;
       const ty = this.gridY + dir.y;
       const tile = game.grid.getTile(tx, ty);
-      if (tile && tile.walkable && !tile.occupiedBy) {
+      if (tile && tile.walkable && !tile.occupiedBy && !tile.unitOccupant) {
         spawnTile = tile;
         break;
       }
@@ -216,7 +216,7 @@ export class Building extends Entity {
         );
       }
 
-      game.addUnit(unit);
+      if (!game.addUnit(unit)) return;
 
       // Order unit to move to rally point
       const startTile = game.grid.getTileAtWorld(unit.x, unit.y);

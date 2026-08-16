@@ -23,7 +23,10 @@ export class Tile {
     this.resourceAmount = 0;
     this.maxResource = 100;
     this.walkable = type === 'grass' || type === 'ore';
+    // Keep buildings and mobile units separate so a unit can pass through a
+    // friendly gate without allowing two units to share that cell.
     this.occupiedBy = null;
+    this.unitOccupant = null;
   }
 }
 
@@ -575,7 +578,7 @@ export class Grid {
 
           if (tile.resourceAmount > 40 && Math.random() < 0.005) {
             const neighbors = this.getNeighbors(tile);
-            const grassNeighbors = neighbors.filter(t => t.type === 'grass' && !t.occupiedBy);
+            const grassNeighbors = neighbors.filter(t => t.type === 'grass' && !t.occupiedBy && !t.unitOccupant);
             if (grassNeighbors.length > 0) {
               const target = grassNeighbors[Math.floor(Math.random() * grassNeighbors.length)];
               target.type = 'ore';
@@ -608,9 +611,13 @@ export class Grid {
     if (!startTile || !endTile) return null;
     if (startTile === endTile) return [];
 
-    if (!endTile.walkable && endTile.occupiedBy !== unit) {
+    const endIsBlocked = !endTile.walkable ||
+      (endTile.unitOccupant && endTile.unitOccupant !== unit);
+    if (endIsBlocked) {
       const neighbors = this.getNeighbors(endTile);
-      const walkableNeighbors = neighbors.filter(n => n.walkable && (!n.occupiedBy || n.occupiedBy === unit));
+      const walkableNeighbors = neighbors.filter(n =>
+        n.walkable && !n.occupiedBy && (!n.unitOccupant || n.unitOccupant === unit)
+      );
       if (walkableNeighbors.length > 0) {
         walkableNeighbors.sort((a, b) => {
           const distA = Math.hypot(a.x - startTile.x, a.y - startTile.y);
@@ -660,9 +667,14 @@ export class Grid {
       for (const neighbor of this.getNeighbors(current)) {
         if (closedSet.has(neighbor)) continue;
 
-        const occupant = neighbor.occupiedBy;
-        const isFriendlyGate = occupant?.isBuilding && occupant.def?.isGate && (!unit || occupant.faction === unit.faction);
-        const isOccupied = occupant && occupant !== unit && neighbor !== endTile && !isFriendlyGate;
+        const buildingOccupant = neighbor.occupiedBy;
+        const unitOccupant = neighbor.unitOccupant;
+        const isFriendlyGate = buildingOccupant?.isBuilding && buildingOccupant.def?.isGate &&
+          (!unit || buildingOccupant.faction === unit.faction);
+        const isOccupied = Boolean(
+          (unitOccupant && unitOccupant !== unit) ||
+          (buildingOccupant && buildingOccupant !== unit && !isFriendlyGate)
+        );
         if (!neighbor.walkable || isOccupied) continue;
 
         const isDiagonal = neighbor.x !== current.x && neighbor.y !== current.y;
