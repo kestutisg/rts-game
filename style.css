@@ -525,6 +525,43 @@ body, html {
   word-wrap: break-word;
 }
 
+.save-load-controls {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.save-load-btn,
+.load-game-menu-btn {
+  flex: 1;
+  padding: 7px 6px;
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  background: oklch(0.12 0.02 200 / 0.9);
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.save-load-btn:hover,
+.load-game-menu-btn:hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  box-shadow: 0 0 8px var(--accent-cyan-glow);
+}
+
+.load-game-menu-btn {
+  display: block;
+  width: min(260px, 100%);
+  margin: 10px auto 0;
+  border-color: var(--accent-green);
+  color: var(--accent-green);
+}
+
 /* Placement Ghost Helper for Map placing */
 #placement-ghost {
   position: absolute;

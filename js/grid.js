@@ -87,7 +87,7 @@ class PriorityQueue {
 }
 
 export class Grid {
-  constructor(width, height, tileSize, mapDefinition = null) {
+  constructor(width, height, tileSize, mapDefinition = null, options = {}) {
     const dimensions = mapDefinition?.dimensions || {};
     this.width = dimensions.width || width;
     this.height = dimensions.height || height;
@@ -111,13 +111,14 @@ export class Grid {
     this.mapWidthPx = this.width * this.tileWidth + this.halfW;
     this.mapHeightPx = (this.height + 1) * this.halfH;
 
-    this.generateMap();
+    if (options.generate === false) {
+      this.initializeTiles();
+    } else {
+      this.generateMap();
+    }
   }
 
-  generateMap() {
-    const areaScale = (this.width * this.height) / (60 * 60);
-    const scaledCount = (base) => Math.max(base, Math.round(base * areaScale));
-
+  initializeTiles() {
     this.tiles = [];
     for (let x = 0; x < this.width; x++) {
       this.tiles[x] = [];
@@ -125,6 +126,13 @@ export class Grid {
         this.tiles[x][y] = new Tile(x, y, 'grass');
       }
     }
+  }
+
+  generateMap() {
+    const areaScale = (this.width * this.height) / (60 * 60);
+    const scaledCount = (base) => Math.max(base, Math.round(base * areaScale));
+
+    this.initializeTiles();
 
     this.applyMapShape();
     this.assignBiomes();

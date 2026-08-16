@@ -49,6 +49,7 @@ Then open [http://localhost:8080](http://localhost:8080) in a modern browser.
 | **Sidebar tabs** | Switch between Structures and Units |
 | **Build / Train buttons** | Queue construction or unit training |
 | **Repair Selected / R** | Repair selected damaged friendly units or structures |
+| **Save Game / Load Game** | Store or restore the current mission in browser local storage |
 | **MUSIC toggle** | Enable or disable background music |
 
 ### Gameplay tips

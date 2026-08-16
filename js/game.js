@@ -10,6 +10,96 @@ import { BUILDING_DEFS, LEVELS, UNIT_DEFS, isUnlockedAt } from './tech.js';
 import { normalizeRaceId } from './races.js';
 import { DEFAULT_MAP_ID, getMapById } from './maps/index.js';
 
+const SAVE_STORAGE_KEY = 'tiberian-odyssey-save-v1';
+const SAVE_VERSION = 1;
+
+const TILE_TYPE_CODES = { grass: 0, water: 1, rock: 2, ore: 3 };
+const TILE_TYPES = ['grass', 'water', 'rock', 'ore'];
+const BIOME_CODES = { temperate: 0, dry: 1, polar: 2, tropical: 3 };
+const BIOMES_BY_CODE = ['temperate', 'dry', 'polar', 'tropical'];
+const WATER_VARIANT_CODES = { null: 0, lake: 1, river: 2, waterfall: 3 };
+const WATER_VARIANTS_BY_CODE = [null, 'lake', 'river', 'waterfall'];
+const BYTES_PER_TILE = 3;
+
+function bytesToBase64(bytes) {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(value) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function serializeGrid(grid) {
+  const bytes = new Uint8Array(grid.width * grid.height * BYTES_PER_TILE);
+  let offset = 0;
+
+  for (let x = 0; x < grid.width; x++) {
+    for (let y = 0; y < grid.height; y++) {
+      const tile = grid.tiles[x][y];
+      const typeCode = TILE_TYPE_CODES[tile.type] ?? TILE_TYPE_CODES.grass;
+      const biomeCode = BIOME_CODES[tile.biome] ?? BIOME_CODES.temperate;
+      const waterVariantCode = WATER_VARIANT_CODES[tile.waterVariant ?? 'null'] ?? 0;
+      const elevationCode = Math.max(0, Math.min(3, Math.round(tile.elevation || 0)));
+
+      // Pack categorical tile state into one byte and keep resource amount and
+      // waterfall depth in two additional bytes. This keeps even the largest
+      // maps small enough for browser localStorage.
+      bytes[offset++] = typeCode | (biomeCode << 2) | (waterVariantCode << 4) | (elevationCode << 6);
+      bytes[offset++] = Math.max(0, Math.min(100, Math.round(tile.resourceAmount || 0)));
+      bytes[offset++] = Math.max(0, Math.min(3, Math.round(tile.waterfallDrop || 0)));
+    }
+  }
+
+  return {
+    width: grid.width,
+    height: grid.height,
+    data: bytesToBase64(bytes),
+  };
+}
+
+function restoreGrid(grid, savedGrid) {
+  if (!savedGrid || savedGrid.width !== grid.width || savedGrid.height !== grid.height) {
+    throw new Error('Saved map dimensions do not match the selected map.');
+  }
+
+  const bytes = base64ToBytes(savedGrid.data);
+  const expectedLength = grid.width * grid.height * BYTES_PER_TILE;
+  if (bytes.length !== expectedLength) {
+    throw new Error('Saved terrain data is incomplete.');
+  }
+
+  let offset = 0;
+  for (let x = 0; x < grid.width; x++) {
+    for (let y = 0; y < grid.height; y++) {
+      const tile = grid.tiles[x][y];
+      const packed = bytes[offset++];
+      const typeCode = packed & 0x03;
+      const biomeCode = (packed >> 2) & 0x03;
+      const waterVariantCode = (packed >> 4) & 0x03;
+      const elevationCode = (packed >> 6) & 0x03;
+
+      tile.type = TILE_TYPES[typeCode] || 'grass';
+      tile.biome = BIOMES_BY_CODE[biomeCode] || 'temperate';
+      tile.waterVariant = WATER_VARIANTS_BY_CODE[waterVariantCode] || null;
+      tile.elevation = elevationCode;
+      tile.resourceAmount = bytes[offset++];
+      tile.waterfallDrop = bytes[offset++];
+      tile.walkable = tile.type === 'grass' || tile.type === 'ore';
+      tile.occupiedBy = null;
+    }
+  }
+}
+
 class Game {
   constructor() {
     this.canvas = document.getElementById('game-canvas');
@@ -134,6 +224,13 @@ class Game {
         if (selectionOverlay) selectionOverlay.classList.remove('hidden');
       });
     }
+
+    const saveBtn = document.getElementById('save-game-btn');
+    if (saveBtn) saveBtn.addEventListener('click', () => this.saveGame());
+
+    document.querySelectorAll('[data-load-game]').forEach(loadBtn => {
+      loadBtn.addEventListener('click', () => this.loadGame());
+    });
   }
 
   startGame(playerRace, enemyRace, mapId = DEFAULT_MAP_ID) {
@@ -252,9 +349,363 @@ class Game {
     return { x: base.x, y: base.y };
   }
 
-  createGrid() {
+  createGrid(options = {}) {
     const dimensions = this.mapDefinition?.dimensions || { width: 320, height: 180 };
-    return new Grid(dimensions.width, dimensions.height, 40, this.mapDefinition);
+    return new Grid(dimensions.width, dimensions.height, 40, this.mapDefinition, options);
+  }
+
+  getStorage() {
+    try {
+      return window.localStorage;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  serializeEntity(entity) {
+    const record = {
+      id: entity.id,
+      faction: entity.faction,
+      type: entity.type,
+      race: entity.race,
+      health: entity.health,
+      maxHealth: entity.maxHealth,
+      selected: entity.selected,
+      repairing: entity.repairing,
+    };
+
+    if (entity.isBuilding) {
+      return {
+        ...record,
+        gridX: entity.gridX,
+        gridY: entity.gridY,
+        isUnderConstruction: entity.isUnderConstruction,
+        constructionProgress: entity.constructionProgress,
+        constructionDuration: entity.constructionDuration,
+        buildQueue: entity.buildQueue.map(item => ({ ...item })),
+        trainingProgress: entity.trainingProgress,
+        turretAngle: entity.turretAngle,
+        lastAttackTime: entity.lastAttackTime,
+        rallyPoint: entity.rallyPoint ? { ...entity.rallyPoint } : null,
+      };
+    }
+
+    const unitRecord = {
+      ...record,
+      x: entity.x,
+      y: entity.y,
+      speed: entity.speed,
+      damage: entity.damage,
+      attackRange: entity.attackRange,
+      attackCooldown: entity.attackCooldown,
+      lastAttackTime: entity.lastAttackTime,
+      angle: entity.angle,
+      turretAngle: entity.turretAngle,
+      state: entity.state,
+      path: entity.path.map(tile => ({ x: tile.x, y: tile.y })),
+      pathIndex: entity.pathIndex,
+      combatTargetId: entity.combatTarget?.id ?? null,
+      isStealthed: entity.isStealthed,
+      decloakTimer: entity.decloakTimer,
+      repathTimer: entity.repathTimer,
+    };
+
+    if (entity instanceof Harvester || entity.type === 'harvester') {
+      unitRecord.cargo = entity.cargo;
+      unitRecord.maxCargo = entity.maxCargo;
+      unitRecord.miningRate = entity.miningRate;
+      unitRecord.depositRate = entity.depositRate;
+      unitRecord.miningTargetTile = entity.miningTargetTile
+        ? { x: entity.miningTargetTile.x, y: entity.miningTargetTile.y }
+        : null;
+      unitRecord.depositTargetRefineryId = entity.depositTargetRefinery?.id ?? null;
+    }
+
+    return unitRecord;
+  }
+
+  createEntityFromSave(record) {
+    let entity;
+    if (record.type && record.gridX !== undefined && record.gridY !== undefined) {
+      entity = new Building(
+        record.id,
+        record.faction,
+        record.type,
+        record.gridX,
+        record.gridY,
+        this.grid.tileSize,
+        this.grid.height,
+        normalizeRaceId(record.race)
+      );
+    } else if (record.type === 'harvester') {
+      entity = new Harvester(
+        record.id,
+        record.faction,
+        record.x,
+        record.y,
+        normalizeRaceId(record.race)
+      );
+    } else {
+      // Use definition defaults in the constructor, then restore the exact
+      // saved combat values so race modifiers are not applied twice.
+      entity = new Unit(
+        record.id,
+        record.faction,
+        record.type,
+        record.x,
+        record.y,
+        null,
+        null,
+        0,
+        0,
+        normalizeRaceId(record.race)
+      );
+    }
+
+    entity.health = record.health;
+    entity.maxHealth = record.maxHealth;
+    entity.selected = Boolean(record.selected);
+    entity.repairing = Boolean(record.repairing);
+
+    if (entity.isBuilding) {
+      entity.isUnderConstruction = Boolean(record.isUnderConstruction);
+      entity.constructionProgress = record.constructionProgress ?? 0;
+      entity.constructionDuration = record.constructionDuration ?? entity.constructionDuration;
+      entity.buildQueue = Array.isArray(record.buildQueue) ? record.buildQueue.map(item => ({ ...item })) : [];
+      entity.trainingProgress = record.trainingProgress ?? 0;
+      entity.turretAngle = record.turretAngle ?? 0;
+      entity.lastAttackTime = record.lastAttackTime ?? 0;
+      if (record.rallyPoint) entity.rallyPoint = { ...record.rallyPoint };
+      return entity;
+    }
+
+    entity.speed = record.speed ?? entity.speed;
+    entity.damage = record.damage ?? entity.damage;
+    entity.attackRange = record.attackRange ?? entity.attackRange;
+    entity.attackCooldown = record.attackCooldown ?? entity.attackCooldown;
+    entity.lastAttackTime = record.lastAttackTime ?? 0;
+    entity.angle = record.angle ?? 0;
+    entity.turretAngle = record.turretAngle ?? entity.angle;
+    entity.state = record.state || 'idle';
+    entity.path = Array.isArray(record.path)
+      ? record.path.map(tile => this.grid.getTile(tile.x, tile.y)).filter(Boolean)
+      : [];
+    entity.pathIndex = Math.max(0, Math.min(entity.path.length, record.pathIndex ?? 0));
+    entity.isStealthed = Boolean(record.isStealthed);
+    entity.decloakTimer = record.decloakTimer ?? 0;
+    entity.repathTimer = record.repathTimer ?? 0;
+
+    if (entity.type === 'harvester') {
+      entity.cargo = record.cargo ?? 0;
+      entity.maxCargo = record.maxCargo ?? entity.maxCargo;
+      entity.miningRate = record.miningRate ?? entity.miningRate;
+      entity.depositRate = record.depositRate ?? entity.depositRate;
+      entity.miningTargetTile = record.miningTargetTile
+        ? this.grid.getTile(record.miningTargetTile.x, record.miningTargetTile.y)
+        : null;
+    }
+
+    return entity;
+  }
+
+  rebuildOccupancy() {
+    for (let x = 0; x < this.grid.width; x++) {
+      for (let y = 0; y < this.grid.height; y++) {
+        this.grid.tiles[x][y].occupiedBy = null;
+        this.grid.tiles[x][y].walkable = this.grid.tiles[x][y].type === 'grass' || this.grid.tiles[x][y].type === 'ore';
+      }
+    }
+
+    const entities = [...this.playerEntities, ...this.enemyEntities];
+    entities.filter(entity => entity.isBuilding && !entity.isDead).forEach(building => {
+      for (let x = building.gridX; x < building.gridX + building.gridWidth; x++) {
+        for (let y = building.gridY; y < building.gridY + building.gridHeight; y++) {
+          const tile = this.grid.getTile(x, y);
+          if (tile) {
+            tile.walkable = Boolean(building.def?.isGate);
+            tile.occupiedBy = building;
+          }
+        }
+      }
+    });
+
+    entities.filter(entity => !entity.isBuilding && !entity.isDead).forEach(unit => {
+      const tile = this.grid.getTileAtWorld(unit.x, unit.y);
+      if (tile && !tile.occupiedBy) tile.occupiedBy = unit;
+    });
+  }
+
+  saveGame() {
+    if (this.state !== 'playing') {
+      this.ui.setStatusText('START A MISSION BEFORE SAVING.');
+      return false;
+    }
+
+    const storage = this.getStorage();
+    if (!storage) {
+      this.ui.setStatusText('SAVE UNAVAILABLE: BROWSER STORAGE IS BLOCKED.');
+      return false;
+    }
+
+    const save = {
+      version: SAVE_VERSION,
+      mapId: this.mapId,
+      playerRace: this.playerRace,
+      enemyRace: this.enemyRace,
+      state: 'playing',
+      currentTime: this.currentTime,
+      lastResourceGrowTime: this.lastResourceGrowTime,
+      playerCredits: this.playerCredits,
+      enemyCredits: this.enemyCredits,
+      playerLevelIndex: this.playerLevelIndex,
+      enemyLevelIndex: this.enemyLevelIndex,
+      nextEntityId: this.nextEntityId,
+      camera: { x: this.camera.x, y: this.camera.y },
+      dayCycleTime: this.dayCycle.time,
+      chemicalClouds: this.chemicalClouds.map(cloud => ({
+        x: cloud.x,
+        y: cloud.y,
+        radius: cloud.radius,
+        duration: cloud.duration,
+        maxDuration: cloud.maxDuration,
+        faction: cloud.faction,
+      })),
+      grid: serializeGrid(this.grid),
+      entities: [...this.playerEntities, ...this.enemyEntities]
+        .filter(entity => !entity.isDead)
+        .map(entity => this.serializeEntity(entity)),
+      ai: {
+        state: this.ai.state,
+        buildTimer: this.ai.buildTimer,
+        buildDuration: this.ai.buildDuration,
+        queuedBuilding: this.ai.queuedBuilding,
+        targetTile: this.ai.targetTile ? { ...this.ai.targetTile } : null,
+        lastTickTime: this.ai.lastTickTime,
+        lastAttackTime: this.ai.lastAttackTime,
+      },
+    };
+
+    try {
+      storage.setItem(SAVE_STORAGE_KEY, JSON.stringify(save));
+      this.ui.setStatusText('GAME SAVED. MISSION STATE STORED LOCALLY.');
+      return true;
+    } catch (error) {
+      this.ui.setStatusText('SAVE FAILED: BROWSER STORAGE LIMIT REACHED.');
+      return false;
+    }
+  }
+
+  loadGame() {
+    const storage = this.getStorage();
+    if (!storage) {
+      this.ui.setStatusText('LOAD UNAVAILABLE: BROWSER STORAGE IS BLOCKED.');
+      return false;
+    }
+
+    let save;
+    try {
+      const raw = storage.getItem(SAVE_STORAGE_KEY);
+      if (!raw) {
+        this.ui.setStatusText('NO SAVED GAME FOUND.');
+        return false;
+      }
+      save = JSON.parse(raw);
+      if (save.version !== SAVE_VERSION || !save.grid || !Array.isArray(save.entities)) {
+        throw new Error('Unsupported save format.');
+      }
+    } catch (error) {
+      this.ui.setStatusText('LOAD FAILED: SAVED DATA IS INVALID.');
+      return false;
+    }
+
+    try {
+      this.mapId = getMapById(save.mapId).id;
+      this.mapDefinition = getMapById(this.mapId);
+      this.playerRace = normalizeRaceId(save.playerRace);
+      this.enemyRace = normalizeRaceId(save.enemyRace);
+      this.playerCredits = save.playerCredits;
+      this.enemyCredits = save.enemyCredits;
+      this.playerLevelIndex = save.playerLevelIndex;
+      this.enemyLevelIndex = save.enemyLevelIndex;
+      this.currentTime = save.currentTime || 0;
+      this.lastTime = 0;
+      this.lastResourceGrowTime = save.lastResourceGrowTime || 0;
+      this.nextEntityId = save.nextEntityId || 1;
+
+      this.grid = this.createGrid({ generate: false });
+      restoreGrid(this.grid, save.grid);
+
+      this.playerEntities = [];
+      this.enemyEntities = [];
+      const entitiesById = new Map();
+      save.entities.forEach(record => {
+        const entity = this.createEntityFromSave(record);
+        entitiesById.set(entity.id, entity);
+        if (entity.faction === 'player') this.playerEntities.push(entity);
+        else this.enemyEntities.push(entity);
+      });
+
+      save.entities.forEach(record => {
+        const entity = entitiesById.get(record.id);
+        if (!entity || entity.isBuilding) return;
+        entity.combatTarget = entitiesById.get(record.combatTargetId) || null;
+        if (entity.type === 'harvester') {
+          entity.depositTargetRefinery = entitiesById.get(record.depositTargetRefineryId) || null;
+        }
+      });
+      this.selectedEntities = [...this.playerEntities, ...this.enemyEntities].filter(entity => entity.selected);
+      this.hoveredEntity = null;
+      this.projectiles = [];
+      this.particles = [];
+      this.chemicalClouds = (save.chemicalClouds || []).map(cloud => {
+        const restoredCloud = new ChemicalCloud(
+          cloud.x,
+          cloud.y,
+          cloud.radius,
+          cloud.duration,
+          cloud.faction
+        );
+        restoredCloud.maxDuration = cloud.maxDuration || restoredCloud.maxDuration;
+        return restoredCloud;
+      });
+      this.clickPings = [];
+      this.placementType = null;
+      this.placementCost = 0;
+      this.ui.clearSidebarBuildVisuals();
+      this.ui.selectedBuilding = this.selectedEntities.find(entity => entity.faction === 'player' && entity.isBuilding) || null;
+      this.ui.hoverTooltip?.classList.add('hidden');
+      this.ui.updateRepairButton();
+      document.body.style.cursor = 'default';
+
+      this.rebuildOccupancy();
+
+      this.ai.state = save.ai?.state || 'idle';
+      this.ai.buildTimer = save.ai?.buildTimer || 0;
+      this.ai.buildDuration = save.ai?.buildDuration || 0;
+      this.ai.queuedBuilding = save.ai?.queuedBuilding || null;
+      this.ai.targetTile = save.ai?.targetTile || null;
+      this.ai.lastTickTime = save.ai?.lastTickTime || 0;
+      this.ai.lastAttackTime = save.ai?.lastAttackTime || 0;
+
+      if (this.dayCycle) this.dayCycle.time = save.dayCycleTime ?? this.dayCycle.time;
+      if (save.camera) {
+        this.camera.x = save.camera.x || 0;
+        this.camera.y = save.camera.y || 0;
+      }
+      this.grid.clampCamera(this.camera);
+
+      this.state = 'playing';
+      document.getElementById('game-over-overlay')?.classList.add('hidden');
+      document.getElementById('faction-selection-overlay')?.classList.add('hidden');
+      this.ui.offscreenMinimapDirty = true;
+      this.ui.applyRaceLabels();
+      this.ui.updateFactionTheme(this.playerRace);
+      this.ui.setStatusText('GAME LOADED. MISSION RESUMED.');
+      return true;
+    } catch (error) {
+      this.ui.setStatusText('LOAD FAILED: SAVED MAP COULD NOT BE RESTORED.');
+      return false;
+    }
   }
 
   restart() {
