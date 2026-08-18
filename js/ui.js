@@ -9,6 +9,7 @@ import { applyRaceBuildingStats, getRace, getRaceBuildingName, getRaceUnitName }
 import { BIOMES, getMinimapGroundColor } from './biomes.js';
 import { updateAllCardBackgrounds } from './card-art.js';
 import { DEFAULT_MAP_ID, MAPS } from './maps/index.js';
+import { CAMPAIGNS } from './campaigns.js';
 
 export class UIManager {
   constructor(game) {
@@ -49,6 +50,7 @@ export class UIManager {
 
     this.selectedBuilding = null;
     this.selectedMapId = DEFAULT_MAP_ID;
+    this.selectedCampaignId = 'gdi';
 
     // Create dynamic Hover Tooltip element
     this.hoverTooltip = document.createElement('div');
@@ -120,6 +122,23 @@ export class UIManager {
     }
   }
 
+  renderCampaignPreview(campaignId = this.selectedCampaignId) {
+    const campaign = CAMPAIGNS[campaignId];
+    const briefing = document.getElementById('campaign-briefing');
+    const missionList = document.getElementById('campaign-mission-list');
+    const launchButton = document.getElementById('campaign-launch-btn');
+    if (!campaign || !briefing || !missionList || !launchButton) return;
+
+    briefing.innerText = `${campaign.subtitle} ${campaign.missions[0].briefing}`;
+    missionList.innerHTML = campaign.missions.map((mission, index) => `
+      <li><span class="campaign-mission-number">${String(index + 1).padStart(2, '0')}</span>
+        <span><strong>${mission.title}</strong><small>${mission.mapId.replaceAll('-', ' ').toUpperCase()} · ${mission.objective}</small></span>
+      </li>
+    `).join('');
+    launchButton.innerText = `BEGIN ${campaign.name}`;
+    launchButton.dataset.faction = campaign.faction;
+  }
+
   initListeners() {
     this.tabBuildings.addEventListener('click', () => {
       this.tabBuildings.classList.add('active');
@@ -159,6 +178,27 @@ export class UIManager {
 
     if (this.upgradeLevelBtn) {
       this.upgradeLevelBtn.addEventListener('click', () => this.game.upgradePlayerLevel());
+    }
+
+    // Campaign selection and launch
+    const campaignCards = document.querySelectorAll('.campaign-card');
+    campaignCards.forEach(card => {
+      card.addEventListener('click', () => {
+        this.selectedCampaignId = card.dataset.campaign || 'gdi';
+        campaignCards.forEach(otherCard => {
+          const selected = otherCard === card;
+          otherCard.classList.toggle('selected', selected);
+          otherCard.setAttribute('aria-pressed', String(selected));
+        });
+        this.renderCampaignPreview();
+      });
+    });
+
+    const campaignLaunchBtn = document.getElementById('campaign-launch-btn');
+    if (campaignLaunchBtn) {
+      campaignLaunchBtn.addEventListener('click', () => {
+        this.game.startCampaign(this.selectedCampaignId);
+      });
     }
 
     // Faction startup selection cards
@@ -210,6 +250,7 @@ export class UIManager {
     }
 
     this.syncEnemyRaceOptions(selectedPlayerRace);
+    this.renderCampaignPreview();
   }
 
   initMinimapListeners() {

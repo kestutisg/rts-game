@@ -209,6 +209,7 @@
         <p id="game-over-status">ALL ENEMY FORCES ELIMINATED.</p>
         <div class="game-over-buttons">
           <button id="restart-btn" class="overlay-btn">RESTART MISSION</button>
+          <button id="next-mission-btn" class="overlay-btn hidden">NEXT MISSION</button>
           <button id="change-faction-btn" class="overlay-btn">CHANGE FACTIONS</button>
         </div>
       </div>
@@ -262,6 +263,25 @@
             </ul>
           </div>
         </div>
+
+        <section class="campaign-selection" aria-labelledby="campaign-selection-title">
+          <div class="selection-section-heading" id="campaign-selection-title">CAMPAIGN COMMAND</div>
+          <div class="campaign-cards-container">
+            <button class="campaign-card selected" type="button" data-campaign="gdi" aria-pressed="true">
+              <span class="campaign-card-faction gdi-text">GDI</span>
+              <span class="campaign-card-name">SHIELD OF EARTH</span>
+              <span class="campaign-card-description">Five operations of heavy armor, air power, and Ion fire.</span>
+            </button>
+            <button class="campaign-card" type="button" data-campaign="nod" aria-pressed="false">
+              <span class="campaign-card-faction nod-text">NOD</span>
+              <span class="campaign-card-name">ASCENSION</span>
+              <span class="campaign-card-description">Five strikes of stealth, speed, and Tiberium fury.</span>
+            </button>
+          </div>
+          <p class="campaign-briefing" id="campaign-briefing"></p>
+          <ol class="campaign-mission-list" id="campaign-mission-list"></ol>
+          <button id="campaign-launch-btn" class="campaign-launch-btn" type="button">BEGIN GDI: SHIELD OF EARTH</button>
+        </section>
 
         <section class="map-selection" aria-labelledby="map-selection-title">
           <div class="selection-section-heading" id="map-selection-title">SELECT BATTLEFIELD</div>

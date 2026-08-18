@@ -9,6 +9,7 @@ import { DayCycle } from './daycycle.js';
 import { BUILDING_DEFS, LEVELS, UNIT_DEFS, isUnlockedAt } from './tech.js';
 import { normalizeRaceId } from './races.js';
 import { DEFAULT_MAP_ID, getMapById } from './maps/index.js';
+import { getCampaign, getCampaignMission } from './campaigns.js';
 
 const SAVE_STORAGE_KEY = 'tiberian-odyssey-save-v1';
 const SAVE_VERSION = 1;
@@ -145,6 +146,9 @@ class Game {
     this.enemyRace = 'nod';
     this.mapId = DEFAULT_MAP_ID;
     this.mapDefinition = getMapById(this.mapId);
+    this.campaignId = null;
+    this.campaignMissionIndex = null;
+    this.missionConfig = {};
     
     // Command placement helpers
     this.placementType = null;
@@ -221,6 +225,15 @@ class Game {
       });
     }
 
+    const nextMissionBtn = document.getElementById('next-mission-btn');
+    if (nextMissionBtn) {
+      nextMissionBtn.addEventListener('click', () => {
+        if (this.startNextCampaignMission()) {
+          nextMissionBtn.classList.add('hidden');
+        }
+      });
+    }
+
     // Change Faction button listener
     const changeFactionBtn = document.getElementById('change-faction-btn');
     if (changeFactionBtn) {
@@ -240,17 +253,31 @@ class Game {
     });
   }
 
-  startGame(playerRace, enemyRace, mapId = DEFAULT_MAP_ID) {
+  startGame(playerRace, enemyRace, mapId = DEFAULT_MAP_ID, options = {}) {
     this.playerRace = normalizeRaceId(playerRace);
     this.enemyRace = normalizeRaceId(enemyRace);
     this.mapId = getMapById(mapId).id;
     this.mapDefinition = getMapById(this.mapId);
+    this.campaignId = options.campaignId || null;
+    this.campaignMissionIndex = Number.isInteger(options.campaignMissionIndex)
+      ? options.campaignMissionIndex
+      : null;
+    this.missionConfig = {
+      campaignId: this.campaignId,
+      campaignMissionIndex: this.campaignMissionIndex,
+      missionTitle: options.missionTitle || null,
+      briefing: options.briefing || null,
+      objective: options.objective || null,
+      startingCredits: options.startingCredits,
+      playerLevelIndex: options.playerLevelIndex,
+      enemyLevelIndex: options.enemyLevelIndex,
+    };
     
     // Reset economy & levels
-    this.playerCredits = 10000;
-    this.enemyCredits = 10000;
-    this.playerLevelIndex = 0;
-    this.enemyLevelIndex = 0;
+    this.playerCredits = options.startingCredits ?? 10000;
+    this.enemyCredits = options.enemyStartingCredits ?? this.playerCredits;
+    this.playerLevelIndex = options.playerLevelIndex ?? 0;
+    this.enemyLevelIndex = options.enemyLevelIndex ?? 0;
 
     this.playerEntities = [];
     this.enemyEntities = [];
@@ -286,11 +313,40 @@ class Game {
     this.currentTime = 0;
     this.lastTime = 0;
     this.ui.setStatusText("MISSION COMMENCED. DEPLOY FORCES.");
+    if (options.missionTitle) {
+      this.ui.setStatusText(`${options.missionTitle}. ${options.objective || 'DESTROY ALL ENEMY FORCES.'}`);
+    }
     this.ui.applyRaceLabels();
-    this.ui.updateFactionTheme(playerRace);
+    this.ui.updateFactionTheme(this.playerRace);
     
     const overlay = document.getElementById('faction-selection-overlay');
     if (overlay) overlay.classList.add('hidden');
+  }
+
+  startCampaign(campaignId, missionIndex = 0) {
+    const campaign = getCampaign(campaignId);
+    const mission = getCampaignMission(campaignId, missionIndex);
+    if (!campaign || !mission) return false;
+
+    this.startGame(campaign.faction, campaign.enemyRace, mission.mapId, {
+      campaignId: campaign.id,
+      campaignMissionIndex: mission.index,
+      missionTitle: mission.title,
+      briefing: mission.briefing,
+      objective: mission.objective,
+      startingCredits: mission.startingCredits,
+      playerLevelIndex: mission.playerLevelIndex,
+      enemyLevelIndex: mission.enemyLevelIndex,
+    });
+    return true;
+  }
+
+  startNextCampaignMission() {
+    const campaign = getCampaign(this.campaignId);
+    if (!campaign || this.campaignMissionIndex === null) return false;
+    const nextIndex = this.campaignMissionIndex + 1;
+    if (nextIndex >= campaign.missions.length) return false;
+    return this.startCampaign(campaign.id, nextIndex);
   }
 
   isEntityDetected(entity, detectorFaction) {
@@ -578,6 +634,9 @@ class Game {
       mapId: this.mapId,
       playerRace: this.playerRace,
       enemyRace: this.enemyRace,
+      campaignId: this.campaignId,
+      campaignMissionIndex: this.campaignMissionIndex,
+      missionConfig: this.missionConfig,
       state: 'playing',
       currentTime: this.currentTime,
       lastResourceGrowTime: this.lastResourceGrowTime,
@@ -649,6 +708,11 @@ class Game {
       this.mapDefinition = getMapById(this.mapId);
       this.playerRace = normalizeRaceId(save.playerRace);
       this.enemyRace = normalizeRaceId(save.enemyRace);
+      this.campaignId = save.campaignId || null;
+      this.campaignMissionIndex = Number.isInteger(save.campaignMissionIndex)
+        ? save.campaignMissionIndex
+        : null;
+      this.missionConfig = save.missionConfig || {};
       this.playerCredits = save.playerCredits;
       this.enemyCredits = save.enemyCredits;
       this.playerLevelIndex = save.playerLevelIndex;
@@ -739,47 +803,7 @@ class Game {
   }
 
   restart() {
-    this.playerCredits = 10000;
-    this.enemyCredits = 10000;
-    this.playerLevelIndex = 0;
-    this.enemyLevelIndex = 0;
-
-    this.playerEntities = [];
-    this.enemyEntities = [];
-    this.selectedEntities = [];
-    this.projectiles = [];
-    this.particles = [];
-    this.chemicalClouds = [];
-    this.clickPings = [];
-    this.hoveredEntity = null;
-    this.placementType = null;
-    this.enemyBaseDestroyedRemainingCount = null;
-    this.fencePlacementStartTile = null;
-    this.fencePlacementPreviewTiles = [];
-    if (this.input) this.input.isPlacingFence = false;
-    this.nextEntityId = 1;
-    this.lastResourceGrowTime = 0;
-    this.ai.lastTickTime = 0;
-    this.ai.lastAttackTime = 0;
-    this.ai.state = 'idle';
-    this.ai.buildTimer = 0;
-    this.ai.queuedBuilding = null;
-    this.ai.targetTile = null;
-    this.ui.clearSidebarBuildVisuals();
-    document.body.style.cursor = 'default';
-
-    this.grid.generateMap();
-    this.setupStartingBases();
-    if (this.ui) this.ui.offscreenMinimapDirty = true;
-    
-    // Hide game-over overlay
-    document.getElementById('game-over-overlay').classList.add('hidden');
-    
-    this.state = 'playing';
-    this.currentTime = 0;
-    this.lastTime = 0;
-    this.ui.setStatusText("SYSTEM REBOOTED. CONSTRUCT STRUCTURES TO EXPAND BASE.");
-    this.ui.applyRaceLabels();
+    this.startGame(this.playerRace, this.enemyRace, this.mapId, this.missionConfig);
   }
 
   getLevelIndexForFaction(faction) {
@@ -1121,14 +1145,30 @@ class Game {
 
     if (overlay && title && desc) {
       overlay.classList.remove('hidden');
+      const nextMissionBtn = document.getElementById('next-mission-btn');
       if (status === 'victory') {
-        title.innerText = "MISSION ACCOMPLISHED";
+        const campaign = getCampaign(this.campaignId);
+        const isCampaignComplete = !campaign || this.campaignMissionIndex === null ||
+          this.campaignMissionIndex >= campaign.missions.length - 1;
+        title.innerText = campaign && !isCampaignComplete ? 'MISSION COMPLETE' :
+          (campaign ? 'CAMPAIGN VICTORY' : 'MISSION ACCOMPLISHED');
         title.classList.remove('defeat');
-        desc.innerText = "ALL ENEMY FORCES ELIMINATED. REGION SECURED.";
+        desc.innerText = campaign
+          ? (isCampaignComplete
+            ? `${campaign.name} COMPLETE. THE REGION IS SECURED.`
+            : `ALL ENEMY FORCES ELIMINATED. ${campaign.missions[this.campaignMissionIndex + 1].title} AWAITS.`)
+          : "ALL ENEMY FORCES ELIMINATED. REGION SECURED.";
+        if (nextMissionBtn) {
+          nextMissionBtn.classList.toggle('hidden', !campaign || isCampaignComplete);
+          nextMissionBtn.innerText = campaign && !isCampaignComplete
+            ? `NEXT MISSION: ${campaign.missions[this.campaignMissionIndex + 1].title}`
+            : 'NEXT MISSION';
+        }
       } else {
         title.innerText = "MISSION FAILED";
         title.classList.add('defeat');
         desc.innerText = "YOUR BASE AND FORCES HAVE BEEN TOTALLY DESTROYED.";
+        if (nextMissionBtn) nextMissionBtn.classList.add('hidden');
       }
     }
   }
