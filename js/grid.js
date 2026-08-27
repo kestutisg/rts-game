@@ -745,6 +745,8 @@ export class Grid {
     if (isOddRow) {
       // Odd rows (shifted right): neighbors are offset accordingly
       dirs = [
+        { x: 0, y: -2 },   // aligned row above (odd to odd)
+        { x: 0, y: 2 },    // aligned row below (odd to odd)
         { x: 0, y: -1 },   // top-left (relative to even row)
         { x: 1, y: -1 },   // top-right
         { x: -1, y: 0 },   // left
@@ -755,6 +757,8 @@ export class Grid {
     } else {
       // Even rows (not shifted): neighbors are also adjusted
       dirs = [
+        { x: 0, y: -2 },   // aligned row above (even to even)
+        { x: 0, y: 2 },    // aligned row below (even to even)
         { x: -1, y: -1 },  // top-left
         { x: 0, y: -1 },   // top-right (relative to odd row)
         { x: -1, y: 0 },   // left
@@ -848,10 +852,12 @@ export class Grid {
 
         if (!this.isTilePassableForUnit(neighbor, unit)) continue;
 
-        // Allow movement to any adjacent tile (8-directional) without blocking diagonals
-        const isDiagonal = neighbor.x !== current.x && neighbor.y !== current.y;
-        const elevCost = 1 + neighbor.elevation * 0.4;
-        const moveCost = (isDiagonal ? 1.414 : 1.0) * elevCost;
+        // Same-parity rows are visually aligned, so allow a direct two-row
+        // step instead of forcing units through an offset row and making them
+        // zigzag. Use logical distance so this link costs two normal row steps.
+        const deltaX = neighbor.x - current.x;
+        const deltaY = neighbor.y - current.y;
+        const moveCost = Math.hypot(deltaX, deltaY) * (1 + neighbor.elevation * 0.4);
         const tentativeGScore = (gScore.get(current) ?? Infinity) + moveCost;
 
         if (tentativeGScore < (gScore.get(neighbor) ?? Infinity)) {
