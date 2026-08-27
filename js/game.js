@@ -327,6 +327,10 @@ class Game {
     this.ui.applyRaceLabels();
     this.ui.updateFactionTheme(this.playerRace);
     
+    const gameOverOverlay = document.getElementById('game-over-overlay');
+    if (gameOverOverlay) gameOverOverlay.classList.add('hidden');
+    const nextMissionBtn = document.getElementById('next-mission-btn');
+    if (nextMissionBtn) nextMissionBtn.classList.add('hidden');
     const overlay = document.getElementById('faction-selection-overlay');
     if (overlay) overlay.classList.add('hidden');
   }
