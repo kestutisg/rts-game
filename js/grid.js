@@ -738,10 +738,31 @@ export class Grid {
 
   getNeighbors(tile) {
     const neighbors = [];
-    const dirs = [
-      { x: 0, y: -1 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 },
-      { x: -1, y: -1 }, { x: 1, y: -1 }, { x: 1, y: 1 }, { x: -1, y: 1 }
-    ];
+    // In a staggered horizontal offset grid, neighbor offsets depend on row parity
+    const isOddRow = tile.y % 2 === 1;
+    
+    let dirs;
+    if (isOddRow) {
+      // Odd rows (shifted right): neighbors are offset accordingly
+      dirs = [
+        { x: 0, y: -1 },   // top-left (relative to even row)
+        { x: 1, y: -1 },   // top-right
+        { x: -1, y: 0 },   // left
+        { x: 1, y: 0 },    // right
+        { x: 0, y: 1 },    // bottom-left
+        { x: 1, y: 1 },    // bottom-right
+      ];
+    } else {
+      // Even rows (not shifted): neighbors are also adjusted
+      dirs = [
+        { x: -1, y: -1 },  // top-left
+        { x: 0, y: -1 },   // top-right (relative to odd row)
+        { x: -1, y: 0 },   // left
+        { x: 1, y: 0 },    // right
+        { x: -1, y: 1 },   // bottom-left
+        { x: 0, y: 1 },    // bottom-right
+      ];
+    }
 
     for (const dir of dirs) {
       const tx = tile.x + dir.x;
@@ -827,13 +848,8 @@ export class Grid {
 
         if (!this.isTilePassableForUnit(neighbor, unit)) continue;
 
+        // Allow movement to any adjacent tile (8-directional) without blocking diagonals
         const isDiagonal = neighbor.x !== current.x && neighbor.y !== current.y;
-        if (isDiagonal) {
-          const horizontal = this.getTile(neighbor.x, current.y);
-          const vertical = this.getTile(current.x, neighbor.y);
-          if (!this.isTilePassableForUnit(horizontal, unit) ||
-              !this.isTilePassableForUnit(vertical, unit)) continue;
-        }
         const elevCost = 1 + neighbor.elevation * 0.4;
         const moveCost = (isDiagonal ? 1.414 : 1.0) * elevCost;
         const tentativeGScore = (gScore.get(current) ?? Infinity) + moveCost;
