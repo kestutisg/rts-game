@@ -9,7 +9,13 @@ import { DayCycle } from './daycycle.js';
 import { BUILDING_DEFS, LEVELS, UNIT_DEFS, isUnlockedAt } from './tech.js';
 import { normalizeRaceId } from './races.js';
 import { DEFAULT_MAP_ID, getMapById } from './maps/index.js';
-import { getCampaign, getCampaignMission } from './campaigns.js';
+import {
+  CAMPAIGN_OBJECTIVE_TYPES,
+  getCampaign,
+  getCampaignMission,
+  getObjectiveType,
+  isObjectiveComplete,
+} from './campaigns.js';
 
 const SAVE_STORAGE_KEY = 'tiberian-odyssey-save-v1';
 const SAVE_VERSION = 1;
@@ -268,6 +274,7 @@ class Game {
       missionTitle: options.missionTitle || null,
       briefing: options.briefing || null,
       objective: options.objective || null,
+      objectiveType: options.objectiveType || null,
       startingCredits: options.startingCredits,
       playerLevelIndex: options.playerLevelIndex,
       enemyLevelIndex: options.enemyLevelIndex,
@@ -312,6 +319,7 @@ class Game {
     this.state = 'playing';
     this.currentTime = 0;
     this.lastTime = 0;
+    this.ui.renderMissionAssignment();
     this.ui.setStatusText("MISSION COMMENCED. DEPLOY FORCES.");
     if (options.missionTitle) {
       this.ui.setStatusText(`${options.missionTitle}. ${options.objective || 'DESTROY ALL ENEMY FORCES.'}`);
@@ -334,6 +342,7 @@ class Game {
       missionTitle: mission.title,
       briefing: mission.briefing,
       objective: mission.objective,
+      objectiveType: mission.objectiveType,
       startingCredits: mission.startingCredits,
       playerLevelIndex: mission.playerLevelIndex,
       enemyLevelIndex: mission.enemyLevelIndex,
@@ -347,6 +356,14 @@ class Game {
     const nextIndex = this.campaignMissionIndex + 1;
     if (nextIndex >= campaign.missions.length) return false;
     return this.startCampaign(campaign.id, nextIndex);
+  }
+
+  getMissionObjectiveType() {
+    if (this.campaignId) {
+      const mission = getCampaignMission(this.campaignId, this.campaignMissionIndex ?? 0);
+      return getObjectiveType(mission);
+    }
+    return CAMPAIGN_OBJECTIVE_TYPES.DESTROY_ALL_FORCES;
   }
 
   isEntityDetected(entity, detectorFaction) {
@@ -794,6 +811,7 @@ class Game {
       this.ui.offscreenMinimapDirty = true;
       this.ui.applyRaceLabels();
       this.ui.updateFactionTheme(this.playerRace);
+      this.ui.renderMissionAssignment();
       this.ui.setStatusText('GAME LOADED. MISSION RESUMED.');
       return true;
     } catch (error) {
@@ -1212,14 +1230,14 @@ class Game {
     const liveEnemyBuildings = liveEnemyEntities.filter(entity => entity.isBuilding);
     const liveEnemyUnits = liveEnemyEntities.filter(entity => !entity.isBuilding);
     const playerAlive = livePlayerEntities.length > 0;
-    const enemyAlive = liveEnemyEntities.length > 0;
 
     if (!playerAlive) {
       this.triggerGameOver('defeat');
       return;
     }
 
-    if (!enemyAlive) {
+    const objectiveType = this.getMissionObjectiveType();
+    if (isObjectiveComplete(objectiveType, liveEnemyBuildings.length, liveEnemyUnits.length)) {
       this.triggerGameOver('victory');
       return;
     }

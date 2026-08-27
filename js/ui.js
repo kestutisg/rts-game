@@ -9,7 +9,7 @@ import { applyRaceBuildingStats, getRace, getRaceBuildingName, getRaceUnitName }
 import { BIOMES, getMinimapGroundColor } from './biomes.js';
 import { updateAllCardBackgrounds } from './card-art.js';
 import { DEFAULT_MAP_ID, MAPS } from './maps/index.js';
-import { CAMPAIGNS } from './campaigns.js';
+import { CAMPAIGNS, CAMPAIGN_OBJECTIVE_TYPES } from './campaigns.js';
 
 export class UIManager {
   constructor(game) {
@@ -26,6 +26,13 @@ export class UIManager {
     this.enemyRaceEl = document.getElementById('enemy-race');
     this.sidebarFactionTitle = document.getElementById('sidebar-faction-title');
     this.sidebarFactionTagline = document.getElementById('sidebar-faction-tagline');
+    this.missionPanel = document.getElementById('mission-panel');
+    this.missionPanelContent = document.getElementById('mission-panel-content');
+    this.missionTitle = document.getElementById('mission-title');
+    this.missionBriefing = document.getElementById('mission-briefing');
+    this.missionObjective = document.getElementById('mission-objective');
+    this.missionProgress = document.getElementById('mission-progress');
+    this.missionToggle = document.getElementById('mission-toggle');
     this.levelName = document.getElementById('level-name');
     this.levelDescription = document.getElementById('level-description');
     this.upgradeLevelBtn = document.getElementById('upgrade-level');
@@ -61,6 +68,7 @@ export class UIManager {
     this.initListeners();
     this.initMinimapListeners();
     this.applyRaceLabels();
+    this.renderMissionAssignment();
   }
 
   applyRaceLabels() {
@@ -140,6 +148,14 @@ export class UIManager {
   }
 
   initListeners() {
+    if (this.missionToggle) {
+      this.missionToggle.addEventListener('click', () => {
+        const isHidden = this.missionPanelContent?.classList.toggle('hidden');
+        this.missionToggle.setAttribute('aria-expanded', String(!isHidden));
+        this.missionToggle.innerText = isHidden ? 'SHOW' : 'HIDE';
+      });
+    }
+
     this.tabBuildings.addEventListener('click', () => {
       this.tabBuildings.classList.add('active');
       this.tabUnits.classList.remove('active');
@@ -392,6 +408,35 @@ export class UIManager {
 
   setStatusText(msg) {
     this.statusText.innerText = msg.toUpperCase();
+  }
+
+  renderMissionAssignment() {
+    if (!this.missionPanel) return;
+
+    const config = this.game.missionConfig || {};
+    const campaign = config.campaignId ? CAMPAIGNS[config.campaignId] : null;
+    const mission = campaign?.missions[config.campaignMissionIndex] || null;
+    const title = config.missionTitle || mission?.title || 'SKIRMISH DIRECTIVE';
+    const briefing = config.briefing || mission?.briefing ||
+      'Establish your base, build an army, and remove the opposing force from the battlefield.';
+    const objective = config.objective || mission?.objective || 'Destroy all enemy forces.';
+
+    this.missionTitle.innerText = title;
+    this.missionBriefing.innerText = briefing;
+    this.missionObjective.innerText = objective;
+    this.missionPanel.classList.remove('hidden');
+    this.updateMissionProgress();
+  }
+
+  updateMissionProgress() {
+    if (!this.missionProgress) return;
+
+    const liveEnemyBuildings = this.game.enemyEntities.filter(entity => entity.isBuilding && !entity.isDead).length;
+    const liveEnemyUnits = this.game.enemyEntities.filter(entity => !entity.isBuilding && !entity.isDead).length;
+    const objectiveType = this.game.getMissionObjectiveType();
+    this.missionProgress.innerText = objectiveType === CAMPAIGN_OBJECTIVE_TYPES.DESTROY_BASE
+      ? `ENEMY STRUCTURES REMAINING: ${liveEnemyBuildings}`
+      : `ENEMY FORCES REMAINING: ${liveEnemyBuildings + liveEnemyUnits}`;
   }
 
   onBuildingSelected(building) {
@@ -674,6 +719,7 @@ export class UIManager {
     }
 
     this.updateTechButtons(powerGen, powerDraw);
+    this.updateMissionProgress();
     
     // Update hovering labels overlay
     this.updateHoverLabels();

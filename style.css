@@ -204,6 +204,72 @@ body, html {
   text-transform: uppercase;
 }
 
+.mission-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mission-panel-heading .panel-title {
+  margin-bottom: 0;
+}
+
+.mission-toggle {
+  padding: 3px 6px;
+  background: oklch(0.08 0.01 200);
+  border: 1px solid var(--panel-border);
+  border-radius: 2px;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mission-toggle:hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+#mission-title {
+  margin: 12px 0 7px;
+  color: var(--accent-cyan);
+  font-family: var(--font-display);
+  font-size: 12px;
+  line-height: 1.3;
+  letter-spacing: 0.7px;
+}
+
+#mission-briefing,
+.mission-objective,
+.mission-progress {
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.mission-objective-label {
+  margin-top: 12px;
+  color: var(--accent-orange);
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.mission-objective {
+  margin-top: 3px;
+  color: var(--text-primary);
+}
+
+.mission-progress {
+  margin-top: 8px;
+  color: var(--accent-green);
+  font-size: 9px;
+  letter-spacing: 0.3px;
+}
+
 .level-readout {
   display: flex;
   flex-direction: column;

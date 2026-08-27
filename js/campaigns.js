@@ -1,5 +1,10 @@
 import { getMapById } from './maps/index.js';
 
+export const CAMPAIGN_OBJECTIVE_TYPES = {
+  DESTROY_BASE: 'destroy-base',
+  DESTROY_ALL_FORCES: 'destroy-all-forces',
+};
+
 // Campaign missions use the same skirmish rules, maps, and AI, but provide a
 // structured progression with faction-specific briefings and starting tech.
 export const CAMPAIGNS = {
@@ -15,6 +20,7 @@ export const CAMPAIGNS = {
         mapId: 'great-britain',
         briefing: 'Nod raiders have seized the northern supply corridor. Establish a beachhead and remove their forward command.',
         objective: 'Destroy the Nod base.',
+        objectiveType: CAMPAIGN_OBJECTIVE_TYPES.DESTROY_BASE,
         playerLevelIndex: 0,
         enemyLevelIndex: 0,
         startingCredits: 10000,
@@ -24,6 +30,7 @@ export const CAMPAIGNS = {
         mapId: 'iceland',
         briefing: 'A Tiberium extraction site is powering Nod operations in the volcanic frontier. Break the line before reinforcements arrive.',
         objective: 'Destroy all Nod forces.',
+        objectiveType: CAMPAIGN_OBJECTIVE_TYPES.DESTROY_ALL_FORCES,
         playerLevelIndex: 1,
         enemyLevelIndex: 0,
         startingCredits: 11000,
@@ -33,6 +40,7 @@ export const CAMPAIGNS = {
         mapId: 'italy',
         briefing: 'Nod armor is moving through the mountain passes. Secure the central river crossing and push into their industrial heartland.',
         objective: 'Destroy the Nod base.',
+        objectiveType: CAMPAIGN_OBJECTIVE_TYPES.DESTROY_BASE,
         playerLevelIndex: 1,
         enemyLevelIndex: 1,
         startingCredits: 12000,
@@ -42,6 +50,7 @@ export const CAMPAIGNS = {
         mapId: 'japan',
         briefing: 'The Brotherhood has turned the island chain into a launch platform. Air superiority is the key to the counteroffensive.',
         objective: 'Destroy all Nod forces.',
+        objectiveType: CAMPAIGN_OBJECTIVE_TYPES.DESTROY_ALL_FORCES,
         playerLevelIndex: 2,
         enemyLevelIndex: 2,
         startingCredits: 12500,
@@ -50,7 +59,8 @@ export const CAMPAIGNS = {
         title: 'ION DAWN',
         mapId: 'cuba',
         briefing: 'Kane\'s final strike group is massing in the tropics. Bring the Ion network online and end the campaign.',
-        objective: 'Destroy the Nod base and secure the region.',
+        objective: 'Destroy the Nod base.',
+        objectiveType: CAMPAIGN_OBJECTIVE_TYPES.DESTROY_BASE,
         playerLevelIndex: 3,
         enemyLevelIndex: 3,
         startingCredits: 14000,
@@ -69,6 +79,7 @@ export const CAMPAIGNS = {
         mapId: 'cuba',
         briefing: 'GDI has occupied the eastern ports and declared the island pacified. Strike from the interior and reclaim the Tiberium fields.',
         objective: 'Destroy the GDI base.',
+        objectiveType: CAMPAIGN_OBJECTIVE_TYPES.DESTROY_BASE,
         playerLevelIndex: 0,
         enemyLevelIndex: 0,
         startingCredits: 10000,
@@ -78,6 +89,7 @@ export const CAMPAIGNS = {
         mapId: 'new-zealand',
         briefing: 'GDI armor is cutting the northern routes. Use speed and stealth to shatter their supply network before the front closes.',
         objective: 'Destroy all GDI forces.',
+        objectiveType: CAMPAIGN_OBJECTIVE_TYPES.DESTROY_ALL_FORCES,
         playerLevelIndex: 1,
         enemyLevelIndex: 0,
         startingCredits: 11000,
@@ -87,6 +99,7 @@ export const CAMPAIGNS = {
         mapId: 'italy',
         briefing: 'A forgotten temple site lies behind GDI defenses in the alpine passes. Capture the corridor and let the Obelisks speak.',
         objective: 'Destroy the GDI base.',
+        objectiveType: CAMPAIGN_OBJECTIVE_TYPES.DESTROY_BASE,
         playerLevelIndex: 1,
         enemyLevelIndex: 1,
         startingCredits: 12000,
@@ -96,6 +109,7 @@ export const CAMPAIGNS = {
         mapId: 'japan',
         briefing: 'GDI has deployed sonic technology across the islands. Take the skies with Venoms and make the enemy deaf to its own command.',
         objective: 'Destroy all GDI forces.',
+        objectiveType: CAMPAIGN_OBJECTIVE_TYPES.DESTROY_ALL_FORCES,
         playerLevelIndex: 2,
         enemyLevelIndex: 2,
         startingCredits: 12500,
@@ -104,7 +118,8 @@ export const CAMPAIGNS = {
         title: 'THE LAST WORD',
         mapId: 'great-britain',
         briefing: 'The GDI command believes the Brotherhood broken. Gather the faithful, unleash the nuclear arsenal, and claim the final victory.',
-        objective: 'Destroy the GDI base and secure Nod\'s ascension.',
+        objective: 'Destroy the GDI base.',
+        objectiveType: CAMPAIGN_OBJECTIVE_TYPES.DESTROY_BASE,
         playerLevelIndex: 3,
         enemyLevelIndex: 3,
         startingCredits: 14000,
@@ -130,3 +145,16 @@ export function getCampaignMission(campaignId, missionIndex = 0) {
   };
 }
 
+export function getObjectiveType(mission) {
+  if (mission?.objectiveType) return mission.objectiveType;
+  return mission?.objective?.toLowerCase().includes('base')
+    ? CAMPAIGN_OBJECTIVE_TYPES.DESTROY_BASE
+    : CAMPAIGN_OBJECTIVE_TYPES.DESTROY_ALL_FORCES;
+}
+
+export function isObjectiveComplete(objectiveType, enemyBuildings, enemyUnits) {
+  if (objectiveType === CAMPAIGN_OBJECTIVE_TYPES.DESTROY_BASE) {
+    return enemyBuildings === 0;
+  }
+  return enemyBuildings + enemyUnits === 0;
+}

@@ -47,6 +47,7 @@ Then open [http://localhost:8080](http://localhost:8080) in a modern browser.
 | **Right click** | Move, attack, or assign harvest orders |
 | **Escape / Cancel Building** | Cancel the active structure build or placement |
 | **Sidebar tabs** | Switch between Structures and Units |
+| **Mission Assignment** | Review the briefing, objective, and live enemy progress; use **SHOW/HIDE** to expand or collapse it |
 | **Build / Train buttons** | Queue construction or unit training |
 | **Repair Selected / R** | Repair selected damaged friendly units or structures |
 | **Save Game / Load Game** | Store or restore the current mission in browser local storage |
