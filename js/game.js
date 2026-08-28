@@ -384,7 +384,8 @@ class Game {
       if (det.isBuilding) {
         detectionRange = det.type === 'cyard' || det.type === 'turret' || det.type === 'laser' ? 260 : 150;
       } else {
-        detectionRange = det.type === 'plane' ? 220 : 80;
+        detectionRange = det.detectionRange || UNIT_DEFS[det.type]?.detectionRange ||
+          (det.type === 'plane' ? 220 : 80);
       }
       
       if (dist <= detectionRange) {
@@ -871,7 +872,9 @@ class Game {
 
   canUseUnit(faction, type) {
     const def = UNIT_DEFS[type];
-    return Boolean(def) && isUnlockedAt(this.getLevelIndexForFaction(faction), def);
+    if (!def || !isUnlockedAt(this.getLevelIndexForFaction(faction), def)) return false;
+    if (Array.isArray(def.races) && !def.races.includes(this.getRaceForFaction(faction))) return false;
+    return true;
   }
 
   upgradePlayerLevel() {

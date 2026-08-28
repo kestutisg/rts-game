@@ -4,7 +4,7 @@ export const LEVELS = [
     name: 'Basic',
     description: 'Light motor pool',
     upgradeCost: 0,
-    unitTypes: ['harvester', 'motorcycle', 'buggy'],
+    unitTypes: ['harvester', 'motorcycle', 'buggy', 'sensor_array'],
     buildingTypes: ['cyard', 'power', 'refinery', 'barracks'],
   },
   {
@@ -180,6 +180,19 @@ export const UNIT_DEFS = {
     maxHealth: 90,
     damage: 14,
     attackRange: 150,
+  },
+  sensor_array: {
+    name: 'Mobile Sensor Array',
+    cost: 700,
+    duration: 8.0,
+    level: 'basic',
+    producer: 'barracks',
+    races: ['gdi'],
+    speed: 85,
+    maxHealth: 180,
+    damage: 0,
+    attackRange: 0,
+    detectionRange: 800,
   },
   tank: {
     name: 'Tank',

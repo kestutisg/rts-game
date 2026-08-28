@@ -1,5 +1,5 @@
 import { Entity } from './entities.js';
-import { getFactionPalette, drawSoftShadow, getElevationLift, getEntityPalette } from './render.js';
+import { getFactionPalette, drawRadarDish, drawSoftShadow, getElevationLift, getEntityPalette } from './render.js';
 import { UNIT_DEFS } from './tech.js';
 import { applyRaceUnitStats, normalizeRaceId } from './races.js';
 
@@ -28,6 +28,7 @@ export class Unit extends Entity {
     this.speed = stats.speed;
     this.radius = this.getRadiusForType(type);
     this.isFlying = Boolean(def?.flying);
+    this.detectionRange = def?.detectionRange ?? 0;
     this.projectileType = def?.projectile || null;
     
     this.path = [];
@@ -305,6 +306,8 @@ export class Unit extends Entity {
       this.drawMotorcycle(ctx, screenX, screenY - bob, palette, time);
     } else if (this.type === 'buggy') {
       this.drawBuggy(ctx, screenX, screenY - bob, palette, time);
+    } else if (this.type === 'sensor_array') {
+      this.drawSensorArray(ctx, screenX, screenY - bob, palette, time);
     } else if (this.type === 'tank') {
       this.drawTank(ctx, screenX, screenY - bob, palette, time);
     } else if (this.type === 'plane') {
@@ -325,6 +328,19 @@ export class Unit extends Entity {
     }
 
     ctx.restore();
+
+    if (this.type === 'sensor_array' && this.selected && this.detectionRange > 0) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(79, 195, 247, 0.3)';
+      ctx.shadowColor = 'rgba(79, 195, 247, 0.45)';
+      ctx.shadowBlur = 8;
+      ctx.setLineDash([6, 6]);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, this.detectionRange, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     this.drawSelectionAndHP(
       ctx,
@@ -641,6 +657,47 @@ export class Unit extends Entity {
     ctx.beginPath();
     ctx.moveTo(4, 0);
     ctx.lineTo(16, 0);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawSensorArray(ctx, sx, sy, palette, time) {
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.scale(1, 0.55);
+    ctx.rotate(this.angle);
+
+    ctx.fillStyle = '#111619';
+    for (const x of [-10, 10]) {
+      ctx.beginPath();
+      ctx.arc(x, -8, 3.5, 0, Math.PI * 2);
+      ctx.arc(x, 8, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    this.drawRaisedVehicleBody(ctx, [
+      { x: -14, y: -8 },
+      { x: 11, y: -8 },
+      { x: 14, y: -3 },
+      { x: 12, y: 7 },
+      { x: -11, y: 7 },
+      { x: -14, y: 2 },
+    ], palette.secondary, this.darkenColor(palette.dark, 0.08), '#000', 5);
+
+    ctx.fillStyle = palette.primary;
+    ctx.fillRect(-7, -5, 14, 7);
+    ctx.strokeStyle = palette.accent;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(-5, -4, 10, 5);
+    ctx.restore();
+
+    drawRadarDish(ctx, sx, sy - 10, 12, time, palette.primary);
+
+    ctx.save();
+    ctx.strokeStyle = `rgba(128, 222, 234, ${0.35 + Math.sin(time * 4) * 0.12})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(sx, sy - 10, 16, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
