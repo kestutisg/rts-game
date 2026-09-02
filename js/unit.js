@@ -49,13 +49,51 @@ export class Unit extends Entity {
     this.isStealthed = false;
     this.decloakTimer = 0;
     this.repathTimer = 0;
+
+    // Special unit abilities
+    this.healRange = def?.healRange || 0;
+    this.healRate = def?.healRate || 0;
+    this.healingTarget = null;
+    this.engineerTarget = null;
+    this.hijackTarget = null;
+    this.isCyborg = Boolean(def?.isCyborg);
+    this.isHero = Boolean(def?.isHero);
+    this.isCrawling = false;
+    this.hijackerInside = false;
+    this.gameRef = null;
   }
 
   takeDamage(amount) {
+    // Check cyborg crawling resurrection mechanic
+    if ((this.type === 'cyborg' || this.type === 'cyborg_commando') && !this.isCrawling && (this.health - amount) <= 0) {
+      this.isCrawling = true;
+      this.health = Math.max(1, Math.round(this.maxHealth * 0.4));
+      this.speed = Math.max(25, Math.round(this.speed * 0.45));
+      this.decloakTimer = 3.0;
+      return;
+    }
+
     super.takeDamage(amount);
     // Decloak when taking damage
     this.decloakTimer = 3.0;
     this.isStealthed = false;
+
+    // If a hijacked vehicle dies, safely eject the hijacker!
+    if (this.isDead && this.hijackerInside && this.gameRef) {
+      const ejected = new Unit(
+        this.gameRef.nextEntityId++,
+        this.faction,
+        'hijacker',
+        this.x + (Math.random() - 0.5) * 16,
+        this.y + (Math.random() - 0.5) * 16,
+        null,
+        null,
+        0,
+        0,
+        this.race
+      );
+      this.gameRef.addEntity(ejected);
+    }
   }
 
   getRadiusForType(type) {
@@ -63,7 +101,8 @@ export class Unit extends Entity {
     if (type === 'buggy' || type === 'plane') return 12;
     if (type === 'nuke_rocket' || type === 'bio_rocket') return 13;
     if (type === 'motorcycle') return 8;
-    return 7;
+    if (type === 'cyborg_commando' || type === 'ghost_stalker') return 8;
+    return 6;
   }
 
   getCooldownForType(type) {
@@ -72,11 +111,19 @@ export class Unit extends Entity {
     if (type === 'nuke_rocket') return 3.2;
     if (type === 'bio_rocket') return 2.6;
     if (type === 'buggy') return 0.75;
+    if (type === 'disc_thrower') return 1.6;
+    if (type === 'rocket_infantry') return 1.4;
+    if (type === 'cyborg') return 0.65;
+    if (type === 'cyborg_commando') return 0.35;
+    if (type === 'ghost_stalker') return 1.9;
+    if (type === 'jumpjet') return 0.5;
+    if (type === 'light_infantry') return 0.45;
     return 0.6;
   }
 
   update(dt, game) {
     if (this.isDead) return;
+    this.gameRef = game;
 
     if (this.repairing) {
       this.state = 'idle';
@@ -101,12 +148,33 @@ export class Unit extends Entity {
       this.isStealthed = false;
     }
 
-    // Tiberium toxicity for GDI infantry only
-    if (this.race !== 'nod' && (this.type === 'soldier' || this.type === 'rocket') && Math.random() < 0.005) {
-      const tile = game.grid.getTileAtWorld(this.x, this.y);
-      if (tile && tile.type === 'ore') {
+    // Tiberium toxicity & healing
+    const tile = game.grid.getTileAtWorld(this.x, this.y);
+    if (tile && tile.type === 'ore') {
+      if (this.type === 'ghost_stalker' || this.type === 'hijacker' || this.type === 'cyborg' || this.type === 'cyborg_commando') {
+        // Mutants and cyborgs regenerate health in Tiberium fields!
+        if (this.health < this.maxHealth) {
+          this.health = Math.min(this.maxHealth, this.health + dt * 8);
+        }
+      } else if (this.race !== 'nod' && !this.isFlying && (this.type === 'soldier' || this.type === 'rocket' || this.type === 'light_infantry' || this.type === 'disc_thrower' || this.type === 'medic' || this.type === 'engineer') && Math.random() < 0.006) {
+        // Standard GDI biological troops suffer toxicity damage from Tiberium
         this.takeDamage(1);
       }
+    }
+
+    // Medic autonomous triage & targeted healing
+    if (this.type === 'medic') {
+      this.updateMedicHeal(dt, game);
+    }
+
+    // Engineer capture / repair interaction
+    if (this.type === 'engineer') {
+      this.updateEngineerOrder(game);
+    }
+
+    // Mutant Hijacker vehicle takeover
+    if (this.type === 'hijacker') {
+      this.updateHijackerOrder(game);
     }
 
     switch (this.state) {
@@ -119,6 +187,110 @@ export class Unit extends Entity {
       case 'attacking':
         this.updateAttacking(dt, game);
         break;
+    }
+  }
+
+  updateMedicHeal(dt, game) {
+    if (this.healingTarget && (this.healingTarget.isDead || this.healingTarget.health >= this.healingTarget.maxHealth)) {
+      this.healingTarget = null;
+    }
+
+    if (!this.healingTarget && (this.state === 'idle' || this.state === 'moving')) {
+      const allies = this.faction === 'player' ? game.playerEntities : game.enemyEntities;
+      let bestTarget = null;
+      let minDist = this.healRange || 140;
+
+      for (const ally of allies) {
+        if (ally.isDead || ally === this || ally.isBuilding || ally.isFlying || ally.type === 'tank' || ally.type === 'motorcycle' || ally.type === 'buggy' || ally.type === 'harvester' || ally.type === 'sensor_array' || ally.type === 'cyborg' || ally.type === 'cyborg_commando') continue;
+        if (ally.health < ally.maxHealth) {
+          const dist = Math.hypot(ally.x - this.x, ally.y - this.y);
+          if (dist < minDist) {
+            minDist = dist;
+            bestTarget = ally;
+          }
+        }
+      }
+      if (bestTarget) {
+        this.healingTarget = bestTarget;
+      }
+    }
+
+    if (this.healingTarget) {
+      const dist = Math.hypot(this.healingTarget.x - this.x, this.healingTarget.y - this.y);
+      if (dist <= (this.healRange || 140)) {
+        this.angle = Math.atan2(this.healingTarget.y - this.y, this.healingTarget.x - this.x);
+        this.healingTarget.health = Math.min(this.healingTarget.maxHealth, this.healingTarget.health + (this.healRate || 14) * dt);
+      } else {
+        this.healingTarget = null;
+      }
+    }
+  }
+
+  updateEngineerOrder(game) {
+    if (!this.engineerTarget || this.engineerTarget.isDead) {
+      this.engineerTarget = null;
+      return;
+    }
+
+    const dist = Math.hypot(this.engineerTarget.x - this.x, this.engineerTarget.y - this.y);
+    if (dist <= 38) {
+      const targetB = this.engineerTarget;
+      if (targetB.faction !== this.faction) {
+        const oldFaction = targetB.faction;
+        if (oldFaction === 'player') {
+          game.playerEntities = game.playerEntities.filter(e => e !== targetB);
+          game.enemyEntities.push(targetB);
+        } else {
+          game.enemyEntities = game.enemyEntities.filter(e => e !== targetB);
+          game.playerEntities.push(targetB);
+        }
+        targetB.faction = this.faction;
+        targetB.race = this.race;
+        targetB.health = targetB.maxHealth;
+        targetB.selected = false;
+        game.ui.setStatusText(`STRUCTURE CAPTURED: ${targetB.type.toUpperCase()}`);
+        if (game.audio?.playBuildingPlaced) game.audio.playBuildingPlaced();
+      } else {
+        targetB.health = targetB.maxHealth;
+        game.ui.setStatusText(`STRUCTURE FULLY RESTORED: ${targetB.type.toUpperCase()}`);
+        if (game.audio?.playBuildingPlaced) game.audio.playBuildingPlaced();
+      }
+
+      this.takeDamage(9999);
+      this.isDead = true;
+      this.engineerTarget = null;
+    }
+  }
+
+  updateHijackerOrder(game) {
+    if (!this.hijackTarget || this.hijackTarget.isDead) {
+      this.hijackTarget = null;
+      return;
+    }
+
+    const dist = Math.hypot(this.hijackTarget.x - this.x, this.hijackTarget.y - this.y);
+    if (dist <= 28) {
+      const targetVehicle = this.hijackTarget;
+      const oldFaction = targetVehicle.faction;
+      if (oldFaction === 'player') {
+        game.playerEntities = game.playerEntities.filter(e => e !== targetVehicle);
+        game.enemyEntities.push(targetVehicle);
+      } else {
+        game.enemyEntities = game.enemyEntities.filter(e => e !== targetVehicle);
+        game.playerEntities.push(targetVehicle);
+      }
+      targetVehicle.faction = this.faction;
+      targetVehicle.race = this.race;
+      targetVehicle.hijackerInside = true;
+      targetVehicle.gameRef = game;
+      targetVehicle.combatTarget = null;
+      targetVehicle.state = 'idle';
+      targetVehicle.path = [];
+      targetVehicle.selected = false;
+
+      game.ui.setStatusText(`ENEMY ${targetVehicle.type.toUpperCase()} COMMANDEERED!`);
+      this.isDead = true;
+      this.hijackTarget = null;
     }
   }
 
@@ -248,17 +420,22 @@ export class Unit extends Entity {
 
     let projectileType = this.projectileType;
     if (!projectileType) {
-      if (this.type === 'rocket') projectileType = 'rocket';
+      if (this.type === 'rocket' || this.type === 'rocket_infantry') projectileType = 'rocket';
+      else if (this.type === 'disc_thrower') projectileType = 'disc';
+      else if (this.type === 'ghost_stalker') projectileType = 'railgun';
+      else if (this.type === 'cyborg_commando') projectileType = 'plasma';
       else if (this.type === 'tank') projectileType = this.race === 'gdi' ? 'railgun' : 'shell';
       else if (this.type === 'plane') projectileType = 'rocket';
       else projectileType = 'bullet';
     }
 
     const projectileSpeed = {
-      bullet: 420,
+      bullet: 440,
       shell: 280,
-      rocket: 210,
-      railgun: 800,
+      rocket: 230,
+      disc: 220,
+      plasma: 480,
+      railgun: 850,
       nuke: 170,
       bio: 190,
     }[projectileType] || 360;
@@ -298,10 +475,32 @@ export class Unit extends Entity {
     ctx.scale(UNIT_VISUAL_SCALE, UNIT_VISUAL_SCALE);
     ctx.translate(-screenX, -screenY);
 
-    drawSoftShadow(ctx, screenX, screenY + lift * 0.3, this.radius, this.radius * 0.5);
+    if (this.type === 'jumpjet') {
+      drawSoftShadow(ctx, screenX, screenY + 18 + lift * 0.3, this.radius * 1.1, this.radius * 0.5);
+    } else {
+      drawSoftShadow(ctx, screenX, screenY + lift * 0.3, this.radius, this.radius * 0.5);
+    }
 
-    if (this.type === 'soldier' || this.type === 'rocket') {
-      this.drawInfantry(ctx, screenX, screenY - bob, palette, this.type === 'rocket', time);
+    if (this.type === 'soldier' || this.type === 'light_infantry') {
+      this.drawLightInfantry(ctx, screenX, screenY - bob, palette, time);
+    } else if (this.type === 'rocket' || this.type === 'rocket_infantry') {
+      this.drawRocketInfantry(ctx, screenX, screenY - bob, palette, time);
+    } else if (this.type === 'disc_thrower') {
+      this.drawDiscThrower(ctx, screenX, screenY - bob, palette, time);
+    } else if (this.type === 'medic') {
+      this.drawMedic(ctx, screenX, screenY - bob, palette, time);
+    } else if (this.type === 'engineer') {
+      this.drawEngineer(ctx, screenX, screenY - bob, palette, time);
+    } else if (this.type === 'jumpjet') {
+      this.drawJumpJet(ctx, screenX, screenY - 18 - bob, palette, time);
+    } else if (this.type === 'ghost_stalker') {
+      this.drawGhostStalker(ctx, screenX, screenY - bob, palette, time);
+    } else if (this.type === 'cyborg') {
+      this.drawCyborg(ctx, screenX, screenY - bob, palette, time);
+    } else if (this.type === 'cyborg_commando') {
+      this.drawCyborgCommando(ctx, screenX, screenY - bob, palette, time);
+    } else if (this.type === 'hijacker') {
+      this.drawHijacker(ctx, screenX, screenY - bob, palette, time);
     } else if (this.type === 'motorcycle') {
       this.drawMotorcycle(ctx, screenX, screenY - bob, palette, time);
     } else if (this.type === 'buggy') {
@@ -325,6 +524,28 @@ export class Unit extends Entity {
       ctx.beginPath();
       ctx.ellipse(screenX, screenY - bob, this.radius * 1.5, this.radius * 0.8, 0, 0, Math.PI * 2);
       ctx.stroke();
+    }
+
+    // Medic active triage beam
+    if (this.type === 'medic' && this.healingTarget && !this.healingTarget.isDead) {
+      const tX = this.healingTarget.x - camera.x;
+      const tY = this.healingTarget.y - camera.y;
+      ctx.save();
+      ctx.shadowColor = '#00e676';
+      ctx.shadowBlur = 10;
+      ctx.strokeStyle = '#69f0ae';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.lineDashOffset = -time * 20;
+      ctx.beginPath();
+      ctx.moveTo(screenX, screenY - 6);
+      ctx.lineTo(tX, tY - 4);
+      ctx.stroke();
+
+      ctx.fillStyle = '#00e676';
+      ctx.fillRect(tX - 1, tY - 18, 2, 8);
+      ctx.fillRect(tX - 4, tY - 15, 8, 2);
+      ctx.restore();
     }
 
     ctx.restore();
@@ -353,78 +574,489 @@ export class Unit extends Entity {
     );
   }
 
-  drawInfantry(ctx, sx, sy, palette, isRocket, time) {
+  drawLightInfantry(ctx, sx, sy, palette, time) {
     const facing = this.angle;
     const flip = Math.cos(facing) < 0 ? -1 : 1;
+    const legSwing = this.state === 'moving' ? Math.sin(time * 16) * 3 : 0;
 
     // Legs
     ctx.fillStyle = '#37474f';
-    ctx.fillRect(sx - 3 * flip, sy + 1, 3, 6);
-    ctx.fillRect(sx, sy + 1, 3, 6);
+    ctx.fillRect(sx - 3 * flip + legSwing, sy + 1, 3, 6);
+    ctx.fillRect(sx - legSwing, sy + 1, 3, 6);
     ctx.strokeStyle = '#263238';
-    ctx.strokeRect(sx - 3 * flip, sy + 1, 3, 6);
-    ctx.strokeRect(sx, sy + 1, 3, 6);
+    ctx.strokeRect(sx - 3 * flip + legSwing, sy + 1, 3, 6);
+    ctx.strokeRect(sx - legSwing, sy + 1, 3, 6);
 
     // Torso armor
-    const chestColor = isRocket ? '#e65100' : '#455a64';
-    ctx.fillStyle = chestColor;
-    ctx.fillRect(sx - 5, sy - 4, 10, 10);
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(sx - 5, sy - 4, 10, 10);
+    ctx.fillStyle = palette.primary;
+    ctx.fillRect(sx - 4, sy - 4, 8, 8);
+    ctx.strokeStyle = '#102027';
+    ctx.strokeRect(sx - 4, sy - 4, 8, 8);
 
     // Faction shoulder pad
-    ctx.fillStyle = palette.primary;
-    ctx.fillRect(sx + (flip > 0 ? 3 : -7), sy - 5, 4, 5);
-    ctx.strokeRect(sx + (flip > 0 ? 3 : -7), sy - 5, 4, 5);
+    ctx.fillStyle = palette.secondary;
+    ctx.fillRect(sx + (flip > 0 ? 2 : -6), sy - 5, 4, 4);
 
     // Helmet
-    ctx.fillStyle = palette.secondary;
+    ctx.fillStyle = '#455a64';
     ctx.beginPath();
-    ctx.arc(sx, sy - 9, 5, 0, Math.PI * 2);
+    ctx.arc(sx, sy - 8, 4.5, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#000';
+    ctx.strokeStyle = '#102027';
     ctx.stroke();
 
     // Visor
     ctx.fillStyle = palette.accent;
-    ctx.fillRect(sx - 3, sy - 10, 6, 2);
+    ctx.fillRect(sx - 2, sy - 9, 4, 2);
 
-    if (isRocket) {
-      // Rocket launcher tube
+    // M16 Rifle
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(facing);
+    ctx.fillStyle = '#212121';
+    ctx.fillRect(2, -2, 10, 3);
+    ctx.fillStyle = '#757575';
+    ctx.fillRect(6, -1, 7, 1.5);
+    ctx.restore();
+  }
+
+  drawRocketInfantry(ctx, sx, sy, palette, time) {
+    const facing = this.angle;
+    const flip = Math.cos(facing) < 0 ? -1 : 1;
+    const legSwing = this.state === 'moving' ? Math.sin(time * 14) * 2.5 : 0;
+
+    // Heavy reinforced legs
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(sx - 3 * flip + legSwing, sy + 1, 3.5, 6);
+    ctx.fillRect(sx - legSwing, sy + 1, 3.5, 6);
+
+    // Heavy armor torso
+    ctx.fillStyle = '#37474f';
+    ctx.fillRect(sx - 5, sy - 4, 10, 9);
+    ctx.fillStyle = palette.primary;
+    ctx.fillRect(sx - 4, sy - 3, 8, 3);
+
+    // Backpack rocket supply
+    ctx.fillStyle = '#455a64';
+    ctx.fillRect(sx - 5 * flip, sy - 5, 4, 7);
+    ctx.fillStyle = '#ff3d00';
+    ctx.fillRect(sx - 5 * flip, sy - 7, 2, 2);
+
+    // Helmet
+    ctx.fillStyle = '#212121';
+    ctx.beginPath();
+    ctx.arc(sx, sy - 8, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Red visor
+    ctx.fillStyle = '#ff1744';
+    ctx.fillRect(sx - 2.5, sy - 9, 5, 2);
+
+    // Shoulder Rocket Tube
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(facing);
+    ctx.fillStyle = '#37474f';
+    ctx.fillRect(0, -5, 14, 5);
+    ctx.strokeStyle = '#102027';
+    ctx.strokeRect(0, -5, 14, 5);
+    ctx.fillStyle = '#ff5722';
+    ctx.fillRect(14, -4, 3, 3);
+    ctx.restore();
+  }
+
+  drawDiscThrower(ctx, sx, sy, palette, time) {
+    const facing = this.angle;
+    const flip = Math.cos(facing) < 0 ? -1 : 1;
+
+    // Legs
+    ctx.fillStyle = '#455a64';
+    ctx.fillRect(sx - 3 * flip, sy + 1, 3, 6);
+    ctx.fillRect(sx, sy + 1, 3, 6);
+
+    // Torso with disc bandolier
+    ctx.fillStyle = '#546e7a';
+    ctx.fillRect(sx - 4, sy - 4, 8, 8);
+    ctx.strokeStyle = '#ffd54f';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(sx - 3, sy - 4);
+    ctx.lineTo(sx + 3, sy + 4);
+    ctx.stroke();
+
+    // Helmet & golden visor
+    ctx.fillStyle = '#37474f';
+    ctx.beginPath();
+    ctx.arc(sx, sy - 8, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffd54f';
+    ctx.fillRect(sx - 2.5, sy - 9, 5, 2);
+
+    // Thrown Discus in hand
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(facing);
+    ctx.fillStyle = '#ffca28';
+    ctx.shadowColor = '#ffd54f';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.ellipse(8, 0, 4, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawMedic(ctx, sx, sy, palette, time) {
+    const facing = this.angle;
+    const flip = Math.cos(facing) < 0 ? -1 : 1;
+
+    // White tactical uniform
+    ctx.fillStyle = '#eceff1';
+    ctx.fillRect(sx - 3 * flip, sy + 1, 3, 6);
+    ctx.fillRect(sx, sy + 1, 3, 6);
+    ctx.fillRect(sx - 4, sy - 4, 8, 8);
+    ctx.strokeStyle = '#90a4ae';
+    ctx.strokeRect(sx - 4, sy - 4, 8, 8);
+
+    // Medical backpack with flashing green LED
+    ctx.fillStyle = '#cfd8dc';
+    ctx.fillRect(sx - 5 * flip, sy - 5, 4, 7);
+    ctx.fillStyle = Math.sin(time * 6) > 0 ? '#00e676' : '#1b5e20';
+    ctx.fillRect(sx - 5 * flip + 1, sy - 4, 2, 2);
+
+    // Red Cross on chest and shoulder
+    ctx.fillStyle = '#e53935';
+    ctx.fillRect(sx - 1, sy - 3, 2, 6);
+    ctx.fillRect(sx - 3, sy - 1, 6, 2);
+
+    // Helmet with medical band
+    ctx.fillStyle = '#eceff1';
+    ctx.beginPath();
+    ctx.arc(sx, sy - 8, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#e53935';
+    ctx.stroke();
+
+    // Diagnostic Scanner Wand
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(facing);
+    ctx.strokeStyle = '#00e676';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(3, 0);
+    ctx.lineTo(8, 0);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawEngineer(ctx, sx, sy, palette, time) {
+    const facing = this.angle;
+    const flip = Math.cos(facing) < 0 ? -1 : 1;
+
+    // Work pants
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(sx - 3 * flip, sy + 1, 3, 6);
+    ctx.fillRect(sx, sy + 1, 3, 6);
+
+    // High-visibility yellow hazard vest
+    ctx.fillStyle = '#ffeb3b';
+    ctx.fillRect(sx - 4, sy - 4, 8, 8);
+    ctx.fillStyle = '#e0e0e0';
+    ctx.fillRect(sx - 4, sy - 1, 8, 2);
+
+    // Heavy tool pack
+    ctx.fillStyle = '#5d4037';
+    ctx.fillRect(sx - 5 * flip, sy - 4, 4, 6);
+
+    // Safety Hardhat
+    ctx.fillStyle = '#fbc02d';
+    ctx.beginPath();
+    ctx.arc(sx, sy - 8, 4.8, Math.PI, Math.PI * 2);
+    ctx.lineTo(sx + 5, sy - 7);
+    ctx.lineTo(sx - 5, sy - 7);
+    ctx.fill();
+    ctx.strokeStyle = '#f57f17';
+    ctx.stroke();
+
+    // Data Tablet in hand
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(facing);
+    ctx.fillStyle = '#37474f';
+    ctx.fillRect(4, -3, 5, 6);
+    ctx.fillStyle = '#00e5ff';
+    ctx.fillRect(5, -2, 3, 4);
+    ctx.restore();
+  }
+
+  drawJumpJet(ctx, sx, sy, palette, time) {
+    const facing = this.angle;
+    const flip = Math.cos(facing) < 0 ? -1 : 1;
+
+    // Thruster exhaust flame plumes
+    const flameLen = 6 + Math.sin(time * 30) * 3;
+    const flameGrad = ctx.createLinearGradient(0, 0, 0, flameLen);
+    flameGrad.addColorStop(0, '#00e5ff');
+    flameGrad.addColorStop(0.6, '#ffd54f');
+    flameGrad.addColorStop(1, 'rgba(255, 61, 0, 0)');
+
+    ctx.fillStyle = flameGrad;
+    ctx.beginPath();
+    ctx.moveTo(sx - 4, sy + 4);
+    ctx.lineTo(sx - 2, sy + 4 + flameLen);
+    ctx.lineTo(sx, sy + 4);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(sx + 1, sy + 4);
+    ctx.lineTo(sx + 3, sy + 4 + flameLen);
+    ctx.lineTo(sx + 5, sy + 4);
+    ctx.fill();
+
+    // Angled flight legs
+    ctx.fillStyle = '#37474f';
+    ctx.fillRect(sx - 3, sy + 1, 2.5, 5);
+    ctx.fillRect(sx + 1, sy + 1, 2.5, 5);
+
+    // Jetpack chassis on back
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(sx - 6, sy - 6, 12, 8);
+    ctx.fillStyle = palette.primary;
+    ctx.fillRect(sx - 5, sy - 5, 10, 3);
+
+    // Helmet & golden visor
+    ctx.fillStyle = '#455a64';
+    ctx.beginPath();
+    ctx.arc(sx, sy - 8, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#00e5ff';
+    ctx.fillRect(sx - 2.5, sy - 9, 5, 2);
+
+    // Underslung dual vulcan minigun
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(facing);
+    ctx.fillStyle = '#212121';
+    ctx.fillRect(3, -2, 9, 2);
+    ctx.fillRect(3, 1, 9, 2);
+    ctx.restore();
+  }
+
+  drawGhostStalker(ctx, sx, sy, palette, time) {
+    const facing = this.angle;
+    const flip = Math.cos(facing) < 0 ? -1 : 1;
+
+    // Mutant combat duster overcoat
+    ctx.fillStyle = '#4e342e';
+    ctx.fillRect(sx - 4, sy - 4, 8, 9);
+    ctx.fillStyle = '#3e2723';
+    ctx.fillRect(sx - 3 * flip, sy + 2, 3, 6);
+    ctx.fillRect(sx, sy + 2, 3, 6);
+
+    // Cybernetic cyber-arm & C4 harness
+    ctx.fillStyle = '#78909c';
+    ctx.fillRect(sx - 5 * flip, sy - 4, 3, 5);
+    ctx.fillStyle = '#d32f2f';
+    ctx.fillRect(sx - 2, sy - 2, 4, 2); // C4 charge pack
+
+    // Weathered mutant cowl
+    ctx.fillStyle = '#3e2723';
+    ctx.beginPath();
+    ctx.arc(sx, sy - 8, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#00e5ff';
+    ctx.fillRect(sx - 2, sy - 9, 4, 2);
+
+    // Colossal Heavy Railgun with pulsing blue coils
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(facing);
+    ctx.fillStyle = '#212121';
+    ctx.fillRect(2, -3, 16, 5);
+    ctx.fillStyle = '#00e5ff';
+    ctx.shadowColor = '#00b0ff';
+    ctx.shadowBlur = 8;
+    ctx.fillRect(5, -2, 2, 3);
+    ctx.fillRect(9, -2, 2, 3);
+    ctx.fillRect(13, -2, 2, 3);
+    ctx.restore();
+  }
+
+  drawCyborg(ctx, sx, sy, palette, time) {
+    const facing = this.angle;
+    const flip = Math.cos(facing) < 0 ? -1 : 1;
+
+    if (this.isCrawling) {
+      // Legless crawler torso
+      ctx.fillStyle = '#212121';
+      ctx.fillRect(sx - 5, sy - 2, 10, 6);
+
+      // Trailing severed wires with occasional electric spark
+      ctx.strokeStyle = '#d50000';
+      ctx.beginPath();
+      ctx.moveTo(sx - 5 * flip, sy);
+      ctx.lineTo(sx - 8 * flip, sy + (Math.sin(time * 20) > 0 ? 2 : 0));
+      ctx.stroke();
+      if (Math.sin(time * 25) > 0.7) {
+        ctx.fillStyle = '#00e5ff';
+        ctx.fillRect(sx - 9 * flip, sy + 1, 2, 2);
+      }
+
+      // Head with glowing red optic
+      ctx.fillStyle = '#37474f';
+      ctx.beginPath();
+      ctx.arc(sx + 3 * flip, sy - 4, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ff1744';
+      ctx.shadowColor = '#d50000';
+      ctx.shadowBlur = 6;
+      ctx.fillRect(sx + 4 * flip, sy - 5, 2, 2);
+
+      // Arm cannon firing along ground
       ctx.save();
       ctx.translate(sx, sy);
       ctx.rotate(facing);
-      ctx.fillStyle = '#546e7a';
-      ctx.fillRect(flip * 2, -3, 16 * flip, 6);
-      ctx.strokeStyle = '#000';
-      ctx.strokeRect(flip * 2, -3, 16 * flip, 6);
-      ctx.fillStyle = '#ff6f00';
-      ctx.fillRect(flip * 16, -2, 4 * flip, 4);
-      // Backpack
-      ctx.fillStyle = '#37474f';
-      ctx.fillRect(-6 * flip, -2, 5, 8);
-      ctx.strokeRect(-6 * flip, -2, 5, 8);
+      ctx.fillStyle = '#424242';
+      ctx.fillRect(2, -1, 10, 3);
       ctx.restore();
-    } else {
-      // Rifle
-      ctx.strokeStyle = '#263238';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(sx, sy);
-      ctx.lineTo(sx + Math.cos(facing) * 12, sy + Math.sin(facing) * 6);
-      ctx.stroke();
-      ctx.fillStyle = '#78909c';
-      ctx.beginPath();
-      ctx.arc(sx + Math.cos(facing) * 12, sy + Math.sin(facing) * 6, 1.5, 0, Math.PI * 2);
-      ctx.fill();
+      return;
     }
 
-    // Idle breathing
-    if (this.state === 'idle' && Math.sin(time * 2) > 0.95) {
-      ctx.fillStyle = 'rgba(255,255,255,0.15)';
-      ctx.fillRect(sx - 1, sy - 12, 2, 1);
+    // Biomechanical bipedal legs
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(sx - 3 * flip, sy + 1, 3, 6);
+    ctx.fillRect(sx, sy + 1, 3, 6);
+
+    // Gunmetal cyber-torso with red Nod markings
+    ctx.fillStyle = '#37474f';
+    ctx.fillRect(sx - 4, sy - 4, 8, 8);
+    ctx.fillStyle = '#d50000';
+    ctx.fillRect(sx - 2, sy - 3, 4, 2);
+
+    // Cybernetic head with red optic
+    ctx.fillStyle = '#212121';
+    ctx.beginPath();
+    ctx.arc(sx, sy - 8, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ff1744';
+    ctx.shadowColor = '#ff1744';
+    ctx.shadowBlur = 8;
+    ctx.fillRect(sx - 1, sy - 9, 3, 2);
+
+    // Heavy pulse rifle arm
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(facing);
+    ctx.fillStyle = '#212121';
+    ctx.fillRect(2, -2, 12, 4);
+    ctx.fillStyle = '#ff5252';
+    ctx.fillRect(10, -1, 3, 2);
+    ctx.restore();
+  }
+
+  drawCyborgCommando(ctx, sx, sy, palette, time) {
+    const facing = this.angle;
+    const flip = Math.cos(facing) < 0 ? -1 : 1;
+
+    ctx.save();
+    ctx.scale(1.35, 1.35);
+    const scaledSx = sx / 1.35;
+    const scaledSy = sy / 1.35;
+
+    if (this.isCrawling) {
+      ctx.fillStyle = '#1b1b1b';
+      ctx.fillRect(scaledSx - 6, scaledSy - 3, 12, 7);
+      ctx.fillStyle = '#e040fb';
+      ctx.shadowColor = '#d500f9';
+      ctx.shadowBlur = 10;
+      ctx.fillRect(scaledSx - 2, scaledSy - 1, 4, 3);
+
+      ctx.save();
+      ctx.translate(scaledSx, scaledSy);
+      ctx.rotate(facing);
+      ctx.fillStyle = '#212121';
+      ctx.fillRect(3, -2, 13, 4);
+      ctx.restore();
+      ctx.restore();
+      return;
     }
+
+    // Heavy hydraulic walker legs
+    ctx.fillStyle = '#212121';
+    ctx.fillRect(scaledSx - 4 * flip, scaledSy + 1, 4, 7);
+    ctx.fillRect(scaledSx, scaledSy + 1, 4, 7);
+
+    // Reinforced Titanium Carapace
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(scaledSx - 6, scaledSy - 5, 12, 9);
+    ctx.fillStyle = '#b71c1c';
+    ctx.fillRect(scaledSx - 4, scaledSy - 4, 8, 3);
+
+    // Armored Head with dual red optics
+    ctx.fillStyle = '#000000';
+    ctx.beginPath();
+    ctx.arc(scaledSx, scaledSy - 9, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ff1744';
+    ctx.shadowColor = '#ff1744';
+    ctx.shadowBlur = 8;
+    ctx.fillRect(scaledSx - 3, scaledSy - 10, 6, 2);
+
+    // Dual Plasma Cannons
+    ctx.save();
+    ctx.translate(scaledSx, scaledSy);
+    ctx.rotate(facing);
+    ctx.fillStyle = '#212121';
+    ctx.fillRect(2, -4, 15, 3.5);
+    ctx.fillRect(2, 1, 15, 3.5);
+
+    // Glowing Plasma energy reservoirs
+    ctx.fillStyle = '#e040fb';
+    ctx.shadowColor = '#d500f9';
+    ctx.shadowBlur = 10;
+    ctx.fillRect(7, -3.5, 5, 2.5);
+    ctx.fillRect(7, 1.5, 5, 2.5);
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  drawHijacker(ctx, sx, sy, palette, time) {
+    const facing = this.angle;
+    const flip = Math.cos(facing) < 0 ? -1 : 1;
+
+    // Agile crouched legs
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(sx - 3 * flip, sy + 1, 3, 5);
+    ctx.fillRect(sx, sy + 1, 3, 5);
+
+    // Stealth duster cloak
+    ctx.fillStyle = '#37474f';
+    ctx.fillRect(sx - 4, sy - 3, 8, 7);
+    ctx.fillStyle = palette.primary;
+    ctx.fillRect(sx - 3, sy - 2, 6, 2);
+
+    // Hooded cowl
+    ctx.fillStyle = '#212121';
+    ctx.beginPath();
+    ctx.arc(sx, sy - 7, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ce93d8';
+    ctx.fillRect(sx - 2, sy - 8, 4, 1.5);
+
+    // EMP Splicing rig on wrist
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(facing);
+    ctx.strokeStyle = '#ce93d8';
+    ctx.shadowColor = '#ab47bc';
+    ctx.shadowBlur = 8;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(2, 0);
+    ctx.lineTo(8, 0);
+    ctx.stroke();
+    ctx.restore();
   }
 
   darkenColor(hex, amount = 0.35) {
@@ -1358,7 +1990,7 @@ export class Projectile {
     if (dist <= step) {
       const race = this.faction === 'player' ? game.playerRace : game.enemyRace;
       
-      if (['explosive', 'nuke', 'bio'].includes(this.type)) {
+      if (['explosive', 'nuke', 'bio', 'disc'].includes(this.type)) {
         this.applySplashDamage(game);
       } else if (['railgun', 'sonic_beam'].includes(this.type)) {
         this.target.takeDamage(this.damage);
@@ -1369,7 +2001,11 @@ export class Projectile {
       this.isDead = true;
       
       let explosionType = this.type;
-      if (this.type === 'nuke') {
+      if (this.type === 'disc') {
+        explosionType = 'explosive';
+      } else if (this.type === 'plasma') {
+        explosionType = 'laser';
+      } else if (this.type === 'nuke') {
         if (race === 'gdi') explosionType = 'ion_cannon';
         else {
           // NOD Nuclear Missile spawns lingering toxic tiberium cloud
@@ -1388,6 +2024,8 @@ export class Projectile {
         bullet: 5,
         shell: 10,
         rocket: 12,
+        disc: 14,
+        plasma: 12,
         laser: 8,
         explosive: 18,
         nuke: 34,
@@ -1405,6 +2043,7 @@ export class Projectile {
 
   applySplashDamage(game) {
     const radius = {
+      disc: 32,
       explosive: 95,
       nuke: 170,
       bio: 135,
@@ -1540,6 +2179,46 @@ export class Projectile {
       ctx.fillStyle = `rgba(0, 229, 255, ${0.4 + Math.sin(time * 15) * 0.4})`;
       ctx.beginPath();
       ctx.arc(tScreenX, tScreenY, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+
+    // 5. GDI Disc Thrower aerodynamic grenade
+    if (this.type === 'disc') {
+      const sX = this.x - camera.x;
+      const sY = this.y - camera.y - lift;
+      ctx.save();
+      ctx.translate(sX, sY);
+      ctx.rotate(time * 24);
+      ctx.fillStyle = '#ffd54f';
+      ctx.shadowColor = '#ffb300';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 5, 2.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+
+    // 6. NOD Plasma Cannons
+    if (this.type === 'plasma') {
+      const sX = this.x - camera.x;
+      const sY = this.y - camera.y - lift;
+      ctx.save();
+      ctx.translate(sX, sY);
+      ctx.fillStyle = '#e040fb';
+      ctx.shadowColor = '#d500f9';
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(0, 0, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(0, 0, 2, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
       return;

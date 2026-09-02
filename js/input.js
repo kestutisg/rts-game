@@ -252,9 +252,63 @@ export class InputHandler {
 
     const reservedTiles = new Set();
     selectedUnits.forEach((unit, idx) => {
+      // Clear previous special orders on new command
+      unit.engineerTarget = null;
+      unit.hijackTarget = null;
+
+      // Special Ability 1: Engineer Capture (enemy) or Instant Repair (friendly)
+      if (unit.type === 'engineer' && targetEntity && targetEntity.isBuilding && !targetEntity.isDead) {
+        unit.engineerTarget = targetEntity;
+        const startTile = this.game.grid.getTileAtWorld(unit.x, unit.y);
+        const endTile = this.game.grid.getTileAtWorld(targetEntity.x, targetEntity.y);
+        if (startTile && endTile) {
+          const path = this.game.grid.findPath(startTile, endTile, unit);
+          if (path) {
+            unit.path = path;
+            unit.pathIndex = 0;
+            unit.state = 'moving';
+            unit.combatTarget = null;
+          }
+        }
+        return;
+      }
+
+      // Special Ability 2: Mutant Hijacker vehicle commandeering
+      if (unit.type === 'hijacker' && targetEntity && targetEntity.faction === 'enemy' && !targetEntity.isBuilding && !targetEntity.isFlying && !targetEntity.isDead) {
+        unit.hijackTarget = targetEntity;
+        const startTile = this.game.grid.getTileAtWorld(unit.x, unit.y);
+        const endTile = this.game.grid.getTileAtWorld(targetEntity.x, targetEntity.y);
+        if (startTile && endTile) {
+          const path = this.game.grid.findPath(startTile, endTile, unit);
+          if (path) {
+            unit.path = path;
+            unit.pathIndex = 0;
+            unit.state = 'moving';
+            unit.combatTarget = null;
+          }
+        }
+        return;
+      }
+
+      // Special Ability 3: Medic targeted triage
+      if (unit.type === 'medic' && targetEntity && targetEntity.faction === 'player' && !targetEntity.isBuilding && !targetEntity.isFlying && !targetEntity.isDead) {
+        unit.healingTarget = targetEntity;
+        const startTile = this.game.grid.getTileAtWorld(unit.x, unit.y);
+        const endTile = this.game.grid.getTileAtWorld(targetEntity.x, targetEntity.y);
+        if (startTile && endTile) {
+          const path = this.game.grid.findPath(startTile, endTile, unit);
+          if (path) {
+            unit.path = path;
+            unit.pathIndex = 0;
+            unit.state = 'moving';
+          }
+        }
+        return;
+      }
+
       // 1. Attack Command
       if (targetEntity && targetEntity.faction === 'enemy') {
-        if (unit.type !== 'harvester') {
+        if (unit.type !== 'harvester' && unit.damage > 0) {
           unit.combatTarget = targetEntity;
           unit.state = 'attacking';
         }

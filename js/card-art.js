@@ -234,7 +234,9 @@ function renderCardBackground(type, isBuilding, race) {
 
     let uYOffset = 0;
     if (type === 'plane') uYOffset = 14;
+    if (type === 'jumpjet') uYOffset = 10;
     if (type === 'harvester') uYOffset = -4;
+    if (type === 'cyborg_commando' || type === 'ghost_stalker') uYOffset = 2;
 
     const camera = {
       x: -targetX,

@@ -163,44 +163,104 @@
           </button>
         </div>
 
+        <!-- Unit Category Filter Subtabs (Visible when Units tab is active) -->
+        <div class="unit-filter-tabs hidden" id="unit-filter-tabs">
+          <button class="unit-filter-btn active" id="filter-all" data-filter="all">ALL</button>
+          <button class="unit-filter-btn" id="filter-infantry" data-filter="infantry">INFANTRY</button>
+          <button class="unit-filter-btn" id="filter-vehicles" data-filter="vehicle">VEHICLES & AIR</button>
+        </div>
+
         <!-- Units Training Queue Grid (Hidden by default) -->
         <div class="build-grid hidden" id="units-grid">
-          <button class="build-card" id="train-harvester" title="Harvester: Gathers resources from ore fields">
+          <!-- GDI & NOD Infantry Cards -->
+          <button class="build-card" id="train-light_infantry" data-category="infantry" title="Light Infantry: Fast pulse rifle scout and frontline troop">
+            <span class="card-name">Light Infantry</span>
+            <span class="card-cost">$120</span>
+            <div class="build-progress" id="progress-light_infantry"></div>
+          </button>
+          <button class="build-card" id="train-disc_thrower" data-category="infantry" title="Disc Thrower: GDI bouncing grenade disc with splash damage">
+            <span class="card-name">Disc Thrower</span>
+            <span class="card-cost">$300</span>
+            <div class="build-progress" id="progress-disc_thrower"></div>
+          </button>
+          <button class="build-card" id="train-rocket_infantry" data-category="infantry" title="Rocket Infantry: Nod shoulder-mounted missile trooper">
+            <span class="card-name">Rocket Infantry</span>
+            <span class="card-cost">$250</span>
+            <div class="build-progress" id="progress-rocket_infantry"></div>
+          </button>
+          <button class="build-card" id="train-engineer" data-category="infantry" title="Engineer: Captures enemy structures or fully repairs friendly structures">
+            <span class="card-name">Engineer</span>
+            <span class="card-cost">$500</span>
+            <div class="build-progress" id="progress-engineer"></div>
+          </button>
+          <button class="build-card" id="train-medic" data-category="infantry" title="Medic: Automatically heals injured friendly biological infantry">
+            <span class="card-name">Field Medic</span>
+            <span class="card-cost">$600</span>
+            <div class="build-progress" id="progress-medic"></div>
+          </button>
+          <button class="build-card" id="train-cyborg" data-category="infantry" title="Cyborg: Heavy Nod armored cyborg; crawls when destroyed; heals in Tiberium">
+            <span class="card-name">Cyborg</span>
+            <span class="card-cost">$650</span>
+            <div class="build-progress" id="progress-cyborg"></div>
+          </button>
+          <button class="build-card" id="train-jumpjet" data-category="infantry" title="Jump Jet Infantry: Flying airborne GDI vulcan infantry">
+            <span class="card-name">Jump Jet</span>
+            <span class="card-cost">$600</span>
+            <div class="build-progress" id="progress-jumpjet"></div>
+          </button>
+          <button class="build-card" id="train-ghost_stalker" data-category="infantry" title="Ghost Stalker: Mutant hero with piercing Railgun and C4 demolition (Max 1)">
+            <span class="card-name">Ghost Stalker</span>
+            <span class="card-cost">$1750</span>
+            <div class="build-progress" id="progress-ghost_stalker"></div>
+          </button>
+          <button class="build-card" id="train-cyborg_commando" data-category="infantry" title="Cyborg Commando: Elite cybernetic terror with twin plasma cannons (Max 1)">
+            <span class="card-name">Cyborg Commando</span>
+            <span class="card-cost">$2000</span>
+            <div class="build-progress" id="progress-cyborg_commando"></div>
+          </button>
+          <button class="build-card" id="train-hijacker" data-category="infantry" title="Mutant Hijacker: Commandeers any enemy ground vehicle (Max 1)">
+            <span class="card-name">Mutant Hijacker</span>
+            <span class="card-cost">$1850</span>
+            <div class="build-progress" id="progress-hijacker"></div>
+          </button>
+
+          <!-- Vehicles & Strategic Weapons Cards -->
+          <button class="build-card" id="train-harvester" data-category="vehicle" title="Harvester: Gathers resources from ore fields">
             <span class="card-name">Harvester</span>
             <span class="card-cost">$1000</span>
             <div class="build-progress" id="progress-harvester"></div>
           </button>
-          <button class="build-card" id="train-motorcycle" title="Motorcycle: Basic light motor vehicle">
+          <button class="build-card" id="train-motorcycle" data-category="vehicle" title="Motorcycle: Basic light motor vehicle">
             <span class="card-name">Motorcycle</span>
             <span class="card-cost">$160</span>
             <div class="build-progress" id="progress-motorcycle"></div>
           </button>
-          <button class="build-card" id="train-buggy" title="Buggy: Basic light motor vehicle">
+          <button class="build-card" id="train-buggy" data-category="vehicle" title="Buggy: Basic light motor vehicle">
             <span class="card-name">Buggy</span>
             <span class="card-cost">$260</span>
             <div class="build-progress" id="progress-buggy"></div>
           </button>
-          <button class="build-card" id="train-sensor_array" title="Mobile Sensor Array: Mobile GDI detector that reveals cloaked units">
+          <button class="build-card" id="train-sensor_array" data-category="vehicle" title="Mobile Sensor Array: Mobile GDI detector that reveals cloaked units">
             <span class="card-name">Mobile Sensor Array</span>
             <span class="card-cost">$700</span>
             <div class="build-progress" id="progress-sensor_array"></div>
           </button>
-          <button class="build-card" id="train-tank" title="Tank: Improved-level heavy unit">
+          <button class="build-card" id="train-tank" data-category="vehicle" title="Tank: Improved-level heavy unit">
             <span class="card-name">Tank</span>
             <span class="card-cost">$800</span>
             <div class="build-progress" id="progress-tank"></div>
           </button>
-          <button class="build-card" id="train-plane" title="Plane: Advanced-level flying unit">
+          <button class="build-card" id="train-plane" data-category="vehicle" title="Plane: Advanced-level flying unit">
             <span class="card-name">Plane</span>
             <span class="card-cost">$1200</span>
             <div class="build-progress" id="progress-plane"></div>
           </button>
-          <button class="build-card" id="train-nuke_rocket" title="Nuclear Rocket: High-level strategic explosive weapon">
+          <button class="build-card" id="train-nuke_rocket" data-category="vehicle" title="Nuclear Rocket: High-level strategic explosive weapon">
             <span class="card-name">Nuclear Rocket</span>
             <span class="card-cost">$2400</span>
             <div class="build-progress" id="progress-nuke_rocket"></div>
           </button>
-          <button class="build-card" id="train-bio_rocket" title="Bio Rocket: High-level biological weapon">
+          <button class="build-card" id="train-bio_rocket" data-category="vehicle" title="Bio Rocket: High-level biological weapon">
             <span class="card-name">Bio Rocket</span>
             <span class="card-cost">$1900</span>
             <div class="build-progress" id="progress-bio_rocket"></div>

@@ -43,6 +43,8 @@ export class UIManager {
 
     this.tabBuildings = document.getElementById('tab-buildings');
     this.tabUnits = document.getElementById('tab-units');
+    this.unitFilterTabs = document.getElementById('unit-filter-tabs');
+    this.activeUnitFilter = 'all';
     this.cancelBuildButton = document.getElementById('cancel-build');
     this.repairButton = document.getElementById('repair-selected');
     this.buildingsGrid = document.getElementById('buildings-grid');
@@ -71,20 +73,24 @@ export class UIManager {
     this.renderMissionAssignment();
   }
 
-  applyRaceLabels() {
+  updateFactionInfo() {
     const playerRace = getRace(this.game.playerRace);
     const enemyRace = getRace(this.game.enemyRace);
 
-    if (this.sidebarFactionTitle) {
-      this.sidebarFactionTitle.innerText = `${playerRace.name} COMMAND`;
-    }
-    if (this.sidebarFactionTagline) {
-      this.sidebarFactionTagline.innerText = playerRace.tagline;
-    }
     if (this.playerRaceEl) {
       this.playerRaceEl.innerText = playerRace.name;
       this.playerRaceEl.className = `hud-value race-${playerRace.id}`;
     }
+
+    if (this.sidebarFactionTitle) {
+      this.sidebarFactionTitle.innerText = playerRace.fullName.toUpperCase();
+      this.sidebarFactionTitle.className = `sidebar-faction-title race-${playerRace.id}`;
+    }
+
+    if (this.sidebarFactionTagline) {
+      this.sidebarFactionTagline.innerText = playerRace.tagline.toUpperCase();
+    }
+
     if (this.enemyRaceEl) {
       this.enemyRaceEl.innerText = enemyRace.name;
       this.enemyRaceEl.className = `hud-value race-${enemyRace.id}`;
@@ -115,6 +121,13 @@ export class UIManager {
 
     // Update dynamic background card artwork matching player race
     updateAllCardBackgrounds(this.game.playerRace);
+
+    // Apply faction and category filters to unit cards
+    this.applyUnitFilter(this.activeUnitFilter || 'all');
+  }
+
+  applyRaceLabels() {
+    this.updateFactionInfo();
   }
 
   updateFactionTheme(raceId) {
@@ -161,6 +174,7 @@ export class UIManager {
       this.tabUnits.classList.remove('active');
       this.buildingsGrid.classList.remove('hidden');
       this.unitsGrid.classList.add('hidden');
+      this.unitFilterTabs?.classList.add('hidden');
     });
 
     this.tabUnits.addEventListener('click', () => {
@@ -168,6 +182,18 @@ export class UIManager {
       this.tabBuildings.classList.remove('active');
       this.unitsGrid.classList.remove('hidden');
       this.buildingsGrid.classList.add('hidden');
+      this.unitFilterTabs?.classList.remove('hidden');
+      this.applyUnitFilter(this.activeUnitFilter || 'all');
+    });
+
+    const filterButtons = document.querySelectorAll('.unit-filter-btn');
+    filterButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        filterButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.activeUnitFilter = btn.dataset.filter || 'all';
+        this.applyUnitFilter(this.activeUnitFilter);
+      });
     });
 
     Object.entries(BUILDING_DEFS).forEach(([type, def]) => {
@@ -557,6 +583,26 @@ export class UIManager {
     this.setStatusText(`SELECT PLACEMENT COORDINATES FOR ${this.getBuildingName(type)}`);
   }
 
+  applyUnitFilter(filter = 'all') {
+    Object.keys(UNIT_DEFS).forEach(type => {
+      const btn = document.getElementById(`train-${type}`);
+      if (!btn) return;
+      const def = UNIT_DEFS[type];
+      const matchesFaction = !def.races || def.races.includes(this.game.playerRace);
+      if (!matchesFaction) {
+        btn.classList.add('hidden');
+        return;
+      }
+      if (filter === 'all') {
+        btn.classList.remove('hidden');
+      } else if (filter === 'infantry') {
+        btn.classList.toggle('hidden', def.category !== 'infantry');
+      } else if (filter === 'vehicle') {
+        btn.classList.toggle('hidden', def.category === 'infantry');
+      }
+    });
+  }
+
   queueUnitTraining(type) {
     if (this.game.state !== 'playing') return;
 
@@ -575,6 +621,15 @@ export class UIManager {
     if (!parentBuilding) {
       this.setStatusText(`REQUIRES ACTIVE ${parentBuildingType.toUpperCase()} TO TRAIN.`);
       return;
+    }
+
+    if (def.isHero) {
+      const alreadyHasHero = this.game.playerEntities.some(e => !e.isDead && e.type === type);
+      const isQueued = parentBuilding.buildQueue.some(item => (typeof item === 'string' ? item : item.type) === type);
+      if (alreadyHasHero || isQueued) {
+        this.setStatusText(`UNIQUE HERO UNIT LIMIT REACHED (MAX 1 ${def.name.toUpperCase()}).`);
+        return;
+      }
     }
 
     const currentPlayerUnits = this.game.playerEntities.filter(e => !e.isBuilding && !e.isDead).length;
@@ -759,7 +814,12 @@ export class UIManager {
       const btn = document.getElementById(`train-${type}`);
       if (!btn) return;
       const hasProducer = def.producer === 'refinery' ? hasRefinery : hasBarracks;
-      btn.disabled = !hasProducer || !this.game.canUseUnit('player', type);
+      const canUse = this.game.canUseUnit('player', type);
+      const isHeroActive = def.isHero && this.game.playerEntities.some(e => !e.isDead && e.type === type);
+      btn.disabled = !hasProducer || !canUse || isHeroActive;
+      if (isHeroActive) {
+        btn.title = `${getRaceUnitName(this.game.playerRace, type)}: ACTIVE (MAX 1)`;
+      }
     });
   }
 
