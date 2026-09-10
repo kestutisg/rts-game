@@ -311,3 +311,49 @@ export function drawRadarDish(ctx, x, y, radius, time, color = '#90a4ae') {
 
   ctx.restore();
 }
+
+export function drawGeodesicDome(ctx, cx, cy, radius, baseColor = '#e2ded5', stripeColor = '#0288d1') {
+  ctx.save();
+  // Base collar
+  ctx.fillStyle = '#455a64';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + radius * 0.22, radius * 1.05, radius * 0.45, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#263238';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // 3D Dome hemisphere
+  const grad = ctx.createRadialGradient(cx - radius * 0.35, cy - radius * 0.35, radius * 0.1, cx, cy, radius);
+  grad.addColorStop(0, '#ffffff');
+  grad.addColorStop(0.65, baseColor);
+  grad.addColorStop(1, '#78909c');
+
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, Math.PI, 0);
+  ctx.ellipse(cx, cy, radius, radius * 0.35, 0, 0, Math.PI);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#37474f';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Equatorial GDI blue stripe
+  if (stripeColor) {
+    ctx.strokeStyle = stripeColor;
+    ctx.lineWidth = Math.max(1.5, radius * 0.18);
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - radius * 0.15, radius * 0.92, radius * 0.28, 0, 0, Math.PI);
+    ctx.stroke();
+  }
+
+  // Top beacon/antenna node
+  ctx.fillStyle = '#ff1744';
+  ctx.beginPath();
+  ctx.arc(cx, cy - radius, 1.8, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+

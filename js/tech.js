@@ -71,7 +71,7 @@ export const BUILDING_DEFS = {
     height3D: 28,
   },
   barracks: {
-    name: 'Motor Pool',
+    name: 'Barracks',
     cost: 500,
     duration: 6.0,
     level: 'basic',
@@ -83,7 +83,7 @@ export const BUILDING_DEFS = {
     height3D: 24,
   },
   fence: {
-    name: 'Concrete Barrier',
+    name: 'Concrete Wall',
     cost: 120,
     duration: 2.0,
     level: 'improved',
@@ -111,7 +111,7 @@ export const BUILDING_DEFS = {
     isGate: true,
   },
   turret: {
-    name: 'Cannon Turret',
+    name: 'Component Tower',
     cost: 900,
     duration: 7.0,
     level: 'advanced',
@@ -124,7 +124,7 @@ export const BUILDING_DEFS = {
     weapon: { damage: 30, range: 230, cooldown: 1.2, projectile: 'shell', speed: 280 },
   },
   laser: {
-    name: 'Laser Tower',
+    name: 'Sonic Emitter',
     cost: 1600,
     duration: 9.0,
     level: 'high',
@@ -137,7 +137,7 @@ export const BUILDING_DEFS = {
     weapon: { damage: 48, range: 280, cooldown: 0.8, projectile: 'laser', speed: 620 },
   },
   explosive_tower: {
-    name: 'Explosive Tower',
+    name: 'RPG Component Tower',
     cost: 2100,
     duration: 11.0,
     level: 'high',
